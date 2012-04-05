@@ -1,0 +1,56 @@
+#!/bin/sh
+# taken from EPICS distribution
+# Solaris rc2 script for EPICS IOC Log Server process.
+#
+#source /afs/slac/g/lcls/tools/script/ENVS.bash
+source /afs/slac/g/lcls/epics/setup/go_epics_3-14-12.bash
+#source /afs/slac/g/lcls/epics/setup/go_epics_3-14-8-2-lcls2.bash
+# point to test version of iocLogServer
+##########################################################
+# THIS IS FOR RUNNING iocLogServer TEST IN BASE ENVIRONMENT
+#EPICS_BASE_TOP=/u/cd/jrock/jrock2/work_iocLogServerCode/epics/base
+#EPICS_BASE_RELEASE=/u/cd/jrock/jrock2/work_iocLogServerCode/epics/base/3.14.8.2
+#EPICS_BASE_VER=base-R3-14-8-2-lcls6
+
+#export PATH=/u/cd/jrock/jrock2/work_iocLogServerCode/epics/base/3.14.8.2/bin/linux-x86:$PATH
+#printenv PATH | tr ":" "\n"
+
+#export LD_LIBRARY_PATH=/u/cd/jrock/jrock2/work_iocLogServerCode/epics/base/3.14.8.2/lib/linux-x86:$LD_LIBRARY_PATH
+#printenv LD_LIBRARY_PATH | tr ":" "\n"
+##########################################################
+
+####################################################################
+# THIS IS FOR RUNNING iocLogMsgServer TEST IN EXTENSIONS ENVIRONMENT
+# WITH LD LIBRARY PATH THAT INCLUDES ORACLE
+#
+#export PATH=/afs/slac/g/lcls/epics/extensions/extensions-Judy/bin/linux-x86:$PATH
+export PATH=/afs/slac/g/lcls/epics/extensions/MAIN_TRUNK-nia/bin/linux-x86:$PATH
+export LD_LIBRARY_PATH=/afs/slac/package/oracle/d/linux/11.1.0/lib:$LD_LIBRARY_PATH
+###################################################################
+
+printenv | grep LD_LIBRARY_PATH
+printenv | grep EPICS
+which iocLogMsgServer
+
+# To change the default values for the EPICS Environment parameters,
+# uncomment and modify the relevant lines below.
+# the log port is defaulted to 7004 in $EPICS_BASE/config/CONFIG_ENV
+export EPICS_IOC_LOG_PORT="7004"
+export EPICS_IOC_LOG_FILE_NAME="/nfs/slac/g/lcls/cmlog/iocLogServerTest/iocLogServer.log"
+export EPICS_IOC_LOG_FILE_LIMIT="10000000"
+
+export TWO_TASK=MCCODEV
+
+echo "Starting the PROTOTYPE EPICS Log MSG Server "
+
+# STARTING THE STABLE PROTOTYPE VERSION
+# THE ONE UNDER DEVELOPMENT, iocLogMsgServer, MAY OR MAY NOT WORK
+#gdb iocLogMsgServer-WORKING-PROTOTYPE
+gdb iocLogMsgServer
+#iocLogMsgServer
+##########################################################
+# point to test version of iocLogServer
+# THIS IS FOR RUNNING iocLogServer TEST IN BASE ENVIRONMENT
+#$EPICS_BASE_RELEASE/bin/linux-x86/iocLogServer
+##########################################################
+

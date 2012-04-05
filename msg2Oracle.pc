@@ -1,0 +1,259 @@
+/* errlog_interface.pc
+
+   Author:  Elie Grunhaus, SLAC, ext. 3499
+   Created: 30 September 2007
+
+   This Oracle PRO*C file contains callable functions that perform the following tasks:
+
+   1) db_connect() connects to the Oracle ERRLOG_OWNER@MCCODEV schema.
+   2) db_disconnect() disconnects from Oracle.
+   3) db_insert() inserts data into the Oracle ERRLOG table in the ERRLOG_OWNER@MCCODEV schema.
+
+   These functions will be called from the C executable "IocLogAndFwdServer" with the intent of
+   loading experimental messaging data into the Oracle ERRLOG table.
+*/
+
+
+#include <stdio.h> 
+#include <stdlib.h>
+#include <string.h>
+#include <sqlca.h>
+#include <oraca.h> 
+
+#define  DEBUG 0
+#define  MOD_SUCCESS 1
+#define  MOD_FAILURE 0
+
+int  g_status;
+
+/* JROCK screwing around!  will develop error handling further later
+EXEC SQL INCLUDE SQLCA;
+#define SQLCA 1
+*/
+
+EXEC SQL BEGIN DECLARE SECTION;
+  char  SQLSTATE[6];
+EXEC SQL END DECLARE SECTION;
+long SQLCODE;
+
+/* ------------------------------------------------------------ */
+
+/* General error handler */
+
+void sql_error(errmsg)
+    char *errmsg;
+{ 
+    char buf[6];
+
+    strcpy(buf, SQLSTATE);
+    EXEC SQL WHENEVER SQLERROR CONTINUE; 
+
+/* jrock - playing around
+   did not get sqlca working (err message, but it's bs!)
+      sqlca.sqlerrm.sqlerrmc[sqlca.sqlerrm.sqlerrml] = '\0';
+      printf("\n%s, sqlstate is %s; sqlcaerrm is %s\n\n", errmsg, buf, sqlca.sqlerrm.sqlerrmc);
+*/
+
+    if (strncmp(errmsg, "Oracle Error", 12) == 0)
+    {
+      printf("\n%s, sqlstate is %s\n\n", errmsg, buf);
+    }
+    else
+    {
+      printf("\n%s\n\n", errmsg);
+    }
+
+    printf("Last SQL statement: %.*s\n", oraca.orastxt.orastxtl, oraca.orastxt.orastxtc); 
+
+    if ( DEBUG )
+    {
+      printf("\nAt or near line number %d\n", oraca.oraslnr); 
+      printf("\nCursor Cache Statistics\n------------------------\n"); 
+      printf("Maximum value of MAXOPENCURSORS:    %d\n", oraca.orahoc); 
+      printf("Maximum open cursors required:      %d\n", oraca.oramoc); 
+      printf("Current number of open cursors:     %d\n", oraca.oracoc); 
+      printf("Number of cache reassignments:      %d\n", oraca.oranor); 
+      printf("Number of SQL statement parses:     %d\n", oraca.oranpr); 
+      printf("Number of SQL statement executions: %d\n", oraca.oranex); 
+    }
+
+    EXEC SQL ROLLBACK WORK RELEASE;
+
+    g_status = MOD_FAILURE;
+
+    return;
+} 
+
+/* ------------------------------------------------------------ */
+
+int db_connect(server)
+    char server[31];
+{ 
+    int curr_status = 0;
+
+    g_status = MOD_SUCCESS;
+
+    EXEC SQL BEGIN DECLARE SECTION;
+/*    char userid[] = "ERRLOG_OWNER/DE2B_USSY@"; */
+	char userid[100];
+
+    EXEC SQL END DECLARE SECTION;
+
+	strcpy(userid, "ERRLOG_OWNER/DE2B_USSY@");
+    strcat(userid, server);
+
+    EXEC SQL WHENEVER SQLERROR DO sql_error("CONNECT ERROR");
+
+    EXEC SQL CONNECT :userid; 
+
+    EXEC SQL WHENEVER SQLERROR CONTINUE;
+
+    curr_status = g_status;
+
+    return curr_status;
+}
+
+/* ------------------------------------------------------------ */
+
+int db_disconnect()
+{
+  EXEC SQL COMMIT WORK RELEASE;
+
+  return MOD_SUCCESS;
+}
+
+/* ------------------------------------------------------------ */
+
+int db_commit()
+{
+  EXEC SQL COMMIT WORK;
+
+  return MOD_SUCCESS;
+}
+
+/* ------------------------------------------------------------ */
+
+int db_insert(errlog_id,
+              logserver_id,
+              facility_name,
+              severity,
+              msg,
+              logServer_ascii_time,
+              app_ascii_time,
+              app_timestamp_def,
+              err_code,
+              hostnode,
+              user_name,
+              status,
+              process_name,
+              msg_count,
+              commit_flag)
+
+  EXEC SQL BEGIN DECLARE SECTION;
+    int  errlog_id;
+    int  logserver_id;
+    char facility_name[41];
+    char severity[21]; 
+    char msg[681];
+    char logServer_ascii_time[32];
+    char app_ascii_time[32];
+    int  app_timestamp_def;
+    int  err_code;
+    char  hostnode[41];
+    char  user_name[41];
+    int  status;
+    char  process_name[41];
+    long  msg_count;
+    int   commit_flag;
+  EXEC SQL END DECLARE SECTION;
+
+  EXEC SQL VAR  errlog_id IS INTEGER;
+  EXEC SQL VAR  logserver_id IS INTEGER;
+  EXEC SQL VAR facility_name IS STRING(41);
+  EXEC SQL VAR severity IS STRING(21);
+  EXEC SQL VAR msg IS STRING(681);
+  EXEC SQL VAR logServer_ascii_time IS STRING(32);
+  EXEC SQL VAR app_ascii_time IS STRING(32);
+  EXEC SQL VAR app_timestamp_def IS INTEGER;
+  EXEC SQL VAR err_code IS INTEGER;
+  EXEC SQL VAR hostnode IS STRING(41);
+  EXEC SQL VAR user_name IS STRING(41);
+  EXEC SQL VAR status IS INTEGER;
+  EXEC SQL VAR process_name IS STRING(41);
+  EXEC SQL VAR msg_count IS INTEGER;
+
+{
+    
+    int curr_status = 0;
+
+    g_status = MOD_SUCCESS;
+
+
+    /* =================================================== */
+    EXEC ORACLE OPTION (ORACA=YES);
+
+    oraca.oradbgf  = 1;   /* enable debug operations */
+
+    oraca.oracchf  = 1;   /* gather cursor cache statistics */
+
+    oraca.orastxtf = 3;   /* always save the SQL statement */
+    /* ===================================================== */
+
+    EXEC SQL WHENEVER SQLERROR DO sql_error("INSERT ERROR");
+
+/* default app_time and orig_time - altho this may slow things down 
+*/
+printf ("logServer_ascii_time: %s app_ascii_time: %s\n", logServer_ascii_time, app_ascii_time);
+
+/* will need this, but for now use the sequence 
+    EXEC SQL INSERT INTO errlog (errlog_id,
+*/
+
+/* TESTING THE ERROR REPORTING! */
+
+    EXEC SQL INSERT INTO errlog (logserver_id,
+                                 facility_name,
+                                 severity,
+                                 msg,
+                                 logServer_timestamp,
+                                 app_timestamp,
+                                 app_timestamp_upto_secs, 
+                                 app_timestamp_def,
+                                 err_code,
+                                 hostnode,
+                                 user_name,
+                                 status,
+                                 process_name,
+                                 msg_count
+                                    )
+                         VALUES (:logserver_id,
+                                 :facility_name,
+                                 :severity,
+                                 :msg,
+                                 to_timestamp(:logServer_ascii_time, 'DY MON DD HH24:MI:SS.FF YYYY'),
+                                 to_timestamp(:app_ascii_time, 'DD-MON-YYYY HH24:MI:SS.FF'),
+                                 to_timestamp(:app_ascii_time, 'DD-MON-YYYY HH24:MI:SS.FF'), 
+                                 :app_timestamp_def,
+                                 :err_code,
+                                 :hostnode,
+                                 :user_name,
+                                 :status,
+                                 :process_name,
+                                 :msg_count
+                                );
+/*                LOG ERRORS INTO ERRLOG_ERRORS
+              REJECT LIMIT UNLIMITED;
+*/
+
+
+    if ( commit_flag )
+    {
+      EXEC SQL COMMIT WORK;
+    }
+
+    EXEC SQL WHENEVER SQLERROR CONTINUE;
+
+    curr_status = g_status;
+
+    return curr_status;
+} 
