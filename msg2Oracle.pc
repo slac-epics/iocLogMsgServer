@@ -240,10 +240,9 @@ printf ("logServer_ascii_time: %s app_ascii_time: %s\n", logServer_ascii_time, a
                                  :status,
                                  :process_name,
                                  :msg_count
-                                );
-/*                LOG ERRORS INTO ERRLOG_ERRORS
+                                )
+                LOG ERRORS INTO ERRLOG_ERRORS
               REJECT LIMIT UNLIMITED;
-*/
 
 
     if ( commit_flag )
