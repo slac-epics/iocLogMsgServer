@@ -31,6 +31,7 @@
 #include 	<stdio.h>
 #include	<limits.h>
 #include	<time.h>
+#include    <ctype.h>
 
 #ifdef UNIX
 #include 	<unistd.h>
@@ -120,11 +121,14 @@ static void handleLogFileError(void);
 static void envFailureNotify(const ENV_PARAM *pparam);
 static void freeLogClient(struct iocLogClient *pclient);
 static void writeMessagesToLog (struct iocLogClient *pclient);
-static int stripTags(int nchar, char *hostIn, char *timeIn, char *text,
+/*static int stripTags(int nchar, char *hostIn, char *timeIn, char *text,
                      char *timeOut,
                      char *msgStatus, char *msgSeverity,
                      char *system,    char *host, 
                      char *msgErrCode, char *process, char *user, int *timeDef);
+*/
+static int stripTags(int nchar, char *hostIn, char *timeIn, char *text, char *timeOut, int *status, char *msgSeverity, 
+                     char *system, char *host, int *errCode, char *process, char *user, int *timeDef);
 static int convertClientTime(char *timeIn, char *timeOut); 
 
 int isNumeric (const char * s);
@@ -643,6 +647,8 @@ static void readFromClient(void *pParam)
 printf ("====>getting from readFromClient: %s\n",pclient->name);
 printf ("====>got from readFromClientn");
 */
+	// try clearing pclient->recvbuf
+	memset(pclient->recvbuf, '\0', sizeof(pclient->recvbuf));
 
 	logTime(pclient);
 
@@ -692,11 +698,11 @@ printf ("====>writing!\n");
  */
 static void writeMessagesToLog (struct iocLogClient *pclient)
 {
-        int logServer_id = 1;
+	int logServer_id = 1;
 	int status = 0;
-        size_t lineIndex = 0;
-        char msg2write[MSG_SIZE];
-        int app_time_def = 0;
+    size_t lineIndex = 0;
+    char msg2write[MSG_SIZE];
+    int app_time_def = 0;
 	
 	while (TRUE) {
 		size_t nchar;
@@ -706,20 +712,20 @@ static void writeMessagesToLog (struct iocLogClient *pclient)
 		int ntci;
 		int ncharStripped;
 
-                char ascii_time[NAME_SIZE];
-                char app_ascii_time[NAME_SIZE];
-                char msgStatus[NAME_SIZE];
-                int status;
-                char msgErrCode[NAME_SIZE];
-                int errCode;
-                char msgSeverity[SEVERITY_SIZE];
-                char system[FACILITY_SIZE];
-                char timeOut[ASCII_TIME_SIZE];
-                char host[HOSTNODE_SIZE];
-                char process[PROCESS_SIZE];
-                char user[USER_NAME_SIZE];
-                char pclientTime[NAME_SIZE];
-                char timeConverted;
+        char ascii_time[NAME_SIZE];
+        char app_ascii_time[NAME_SIZE];
+//        char msgStatus[NAME_SIZE];
+        int status;
+/*        char msgErrCode[NAME_SIZE]; */
+        int errCode;
+        char msgSeverity[SEVERITY_SIZE]; 
+        char system[FACILITY_SIZE];
+        char timeOut[ASCII_TIME_SIZE];
+        char host[HOSTNODE_SIZE];
+        char process[PROCESS_SIZE];
+        char user[USER_NAME_SIZE];
+        char pclientTime[NAME_SIZE];
+        char timeConverted;
 
 		if ( lineIndex >= pclient->nChar ) {
 			pclient->nChar = 0u;
@@ -794,7 +800,10 @@ static void writeMessagesToLog (struct iocLogClient *pclient)
               
 	
               assert (nchar<INT_MAX);
-              ncharStripped = stripTags(
+              ncharStripped = stripTags(nchar, pclient->name, pclient->ascii_time, &pclient->recvbuf[lineIndex],
+                app_ascii_time, &status, msgSeverity, system, host, &errCode, process, user, &app_time_def);
+
+/*              ncharStripped = stripTags(
                 nchar, pclient->name, pclient->ascii_time,
                 &pclient->recvbuf[lineIndex],
                 app_ascii_time, msgStatus, msgSeverity, system, host,
@@ -804,7 +813,7 @@ static void writeMessagesToLog (struct iocLogClient *pclient)
                    { errCode = atoi(msgErrCode); }
                 else
                    { errCode = 0; }
-/*===============
+===============
 TO DO:
 convert msgStatus to status, msgErrCode to errCode
                 int status;
@@ -842,38 +851,7 @@ printf("%s\n", "===================================");
               don't need this conversion: Oracle has to do it anyway
               convertClientTime(pclient->ascii_time, pclientTime);
 
-int db_insert(errlog_id,
-              logserver_id,
-              facility_name,
-              severity,
-              msg,
-              logServer_ascii_time,
-              app_ascii_time,
-              app_timestamp_def,
-              err_code,
-              hostnode,
-              user_name,
-              status,
-              process_name,
-              msg_count,
-              commit_flag)
-
- 
 */
-printf("logServer_id=%d, system=%s, msgSev=%s, msg=%s, clienttime=%s, apptime=%s, apptimedef=%d, msgErrCode=%s, host=%s, user=%s, status=%s, process=%s\n",
-                   logServer_id,
-                   system,
-                   msgSeverity,
-                   msg2write,
-                   pclient->ascii_time,  
-                   app_ascii_time,
-                   app_time_def,
-                   msgErrCode,  /* error code */
-                   host,
-                   user,
-                   msgStatus,   /* status */
-                   process  /* process */);
-
               if ( 
                  db_insert(0, 
                    logServer_id,
@@ -883,10 +861,10 @@ printf("logServer_id=%d, system=%s, msgSev=%s, msg=%s, clienttime=%s, apptime=%s
                    pclient->ascii_time,  
                    app_ascii_time,
                    app_time_def,
-                   99,  /* errCode */
+                   errCode,  /* errCode */
                    host,
                    user,
-                   99,   /* msgStatus */
+                   status,   /* msgStatus */
                    process,  /* process */
                    1, /* msgCount */
                    1) /* commit flag */
@@ -951,37 +929,45 @@ static int convertClientTime(char *timeIn,
 
 /* the first 4 parameters are input from the pclient structure */
 /* the others are the parsed tag strings */
-static int stripTags(int nchar, char *hostIn, char *timeIn, char *text,
+/*static int stripTags(int nchar, char *hostIn, char *timeIn, char *text,
                      char *timeOut,
                      char *msgStatus, char *msgSeverity,
                      char *system,    char *host, 
                      char *msgErrCode, char *process, char *user, int *timeDef
-                     )
-{
-  char * charPtr = text;
-  char * tagPtr;
-  char * lastPtr;
-  char * valPtr;
-  int    ncharStripped = 0;
-  int    charsize;
+                     ) {
+*/
+static int stripTags(int nchar, char *hostIn, char *timeIn, char *text, char *timeOut, int *status, char *msgSeverity, 
+                     char *system, char *host, int *errCode, char *process, char *user, int *timeDef) {
+	char * charPtr = text;
+	char * tagPtr;
+	char * lastPtr;
+	char * valPtr;
+	int    ncharStripped = 0;
+	int    charsize;
+//	int status;
+//	int errCode;
+	int maxTagLen;
+	char msgStatus[NAME_SIZE];
+	char msgErrCode[NAME_SIZE];
 
-  int maxTagLen;
-
-/*
-**  Initialize outputs.
+/*  Initialize outputs.
 **  default is IOC
 **  host defaults to the host in pclient
 */
-  msgStatus[0]   = 0;
-  msgSeverity[0] = 0;
-  strcpy(system, "IOC");
-  host[0]        = 0;
-  timeOut[0]     = 0;
-/* TESTING!
-*/
-  char thisTag[1000];
-/*
-**  Look for tags at the beginning of the text and strip them out.
+//	msgStatus[0]   = 0;
+	msgSeverity[0] = 0;
+	strcpy(system, "IOC");
+	host[0]        = 0;
+	timeOut[0]     = 0;
+	maxTagLen = NAME_SIZE;    /* default maxTagLen to NAME_SIZE */
+	char thisTag[1000];
+	memset(thisTag, '\0', 1000);
+	memset(msgErrCode, '\0', strlen(msgErrCode));
+	memset(msgStatus, '\0', strlen(msgStatus));
+	*status=0;
+	*errCode=0;
+
+/**  Look for tags at the beginning of the text and strip them out.
 **  Stop looking if there are no more tags or an unknown tag.
 */
   /* IF THERE ARE TAGGED VALUES WITH EMBEDDED SPACES, THIS WILL TRUNCATE THE TAG VAL AT
@@ -989,96 +975,94 @@ static int stripTags(int nchar, char *hostIn, char *timeIn, char *text,
      PERHAPS STRTOK WOULD BE A BETTER PLAN.
      FOR NOW, DONT ALLOW EMBEDDED SPACES
   */
-  while (charPtr) {
-    tagPtr  = strchr(charPtr, '=');
-    if (tagPtr) lastPtr = strchr(tagPtr, ' ');
-    else        lastPtr = 0;
-
+	while (charPtr) {
+		tagPtr  = strchr(charPtr, '=');
+		if (tagPtr) lastPtr = strchr(tagPtr, ' ');
+		else lastPtr = 0;
 /* ==============
 TO DO:
 make sure all tags are here!  document them.
 reconcile with fwdClis, etc.
 ==============
 */
+		/* find a tag */
+		if (tagPtr && lastPtr) {
+			if ( !strncmp(charPtr,"stat=",5)) { valPtr = msgStatus; maxTagLen = NAME_SIZE; strcpy(thisTag,"stat"); }
+			else if ( !strncmp(charPtr,"sevr=",5)) { valPtr = msgSeverity; maxTagLen = SEVERITY_SIZE; strcpy(thisTag,"sevr"); }
+			else if ( !strncmp(charPtr,"fac=" ,4)) { valPtr = system; maxTagLen = FACILITY_SIZE; strcpy(thisTag,"fac"); }
+			else if ( !strncmp(charPtr,"facility=" ,9)) { valPtr = system; maxTagLen = FACILITY_SIZE; strcpy(thisTag,"facility"); }
+			else if ( !strncmp(charPtr,"host=",5)) { valPtr = host; maxTagLen = HOSTNODE_SIZE; strcpy(thisTag,"host"); }
+			else if ( !strncmp(charPtr,"code=",5)) { valPtr = msgErrCode; maxTagLen = NAME_SIZE; strcpy(thisTag,"code"); }
+			else if ( !strncmp(charPtr,"proc=",5)) { valPtr = process; maxTagLen = PROCESS_SIZE; strcpy(thisTag,"proc"); }
+			else if ( !strncmp(charPtr,"user=",5)) { valPtr = user; maxTagLen = USER_NAME_SIZE; strcpy(thisTag,"user"); }
+			else if ((!strncmp(charPtr,"time=",5)) && (charPtr[7]  == '-') && (charPtr[11] == '-') && (charPtr[16] == ' ')) {
+				valPtr = timeOut; strcpy(thisTag,"time");
+				lastPtr = tagPtr + 24;
+			} else valPtr = 0;
 
-    /* default maxTagLen to NAME_SIZE */
-    maxTagLen = NAME_SIZE;
-
-    if (tagPtr && lastPtr) {
-      if      ( !strncmp(charPtr,"stat=",5)) { valPtr = msgStatus; maxTagLen = NAME_SIZE; strcpy(thisTag,"stat"); }
-      else if ( !strncmp(charPtr,"sevr=",5)) { valPtr = msgSeverity; maxTagLen = SEVERITY_SIZE; strcpy(thisTag,"sevr"); }
-      else if ( !strncmp(charPtr,"fac=" ,4)) { valPtr = system; maxTagLen = FACILITY_SIZE; strcpy(thisTag,"fac"); }
-      else if ( !strncmp(charPtr,"facility=" ,9)) { valPtr = system; maxTagLen = FACILITY_SIZE; strcpy(thisTag,"facility"); }
-      else if ( !strncmp(charPtr,"host=",5)) { valPtr = host; maxTagLen = HOSTNODE_SIZE; strcpy(thisTag,"host"); }
-      else if ( !strncmp(charPtr,"code=",5)) { valPtr = msgErrCode; maxTagLen = NAME_SIZE; strcpy(thisTag,"code"); }
-      else if ( !strncmp(charPtr,"proc=",5)) { valPtr = process; maxTagLen = PROCESS_SIZE; strcpy(thisTag,"proc"); }
-      else if ( !strncmp(charPtr,"user=",5)) { valPtr = user; maxTagLen = USER_NAME_SIZE; strcpy(thisTag,"user"); }
-      else if ((!strncmp(charPtr,"time=",5)) &&
-               (charPtr[7]  == '-') && (charPtr[11] == '-') &&
-               (charPtr[16] == ' ')) {
-        valPtr = timeOut; strcpy(thisTag,"time");
-        lastPtr = tagPtr + 24;
-      } else                                 
-         valPtr = 0;
-
-      if (valPtr) {
-        charsize = lastPtr - tagPtr;
-
-/*
-        it's not always NAME_SIZE!  this check depends on the specific tag
+			/* get value of the tag */
+			if (valPtr) {
+				charsize = lastPtr - tagPtr;
+/*        it's not always NAME_SIZE!  this check depends on the specific tag
         chop off the length to the max len allowed
-        if (charsize > NAME_SIZE) charsize = NAME_SIZE;
-*/
-        if (charsize > maxTagLen) charsize = maxTagLen;
+        if (charsize > NAME_SIZE) charsize = NAME_SIZE;*/
+				if (charsize > maxTagLen) charsize = maxTagLen;
+				tagPtr++;
+				strncpy(valPtr, tagPtr, charsize);
+				valPtr[charsize-1] = 0;
+				printf("Tag: %s, Value: %s\n", thisTag, valPtr);
+				lastPtr++;
+				ncharStripped = lastPtr - text;
+				charPtr = lastPtr;
+			} else {  /* didn't find a value */
+				charPtr = 0;
+			}
+		} else { /* no tag, end of pclient recv buffer */
+			charPtr = 0;
+		}
+	}
+	printf("Msg: %s\n", text); 
 
-        tagPtr++;
-        strncpy(valPtr, tagPtr, charsize);
-        valPtr[charsize-1] = 0;
+	/* now clean up data and handle defaults */
+	/* no host defined, set default */
+	if (strlen(host) == 0) { 	
+/*   strncpy(host, hostIn, NAME_SIZE); */
+		strncpy(host, hostIn, HOSTNODE_SIZE);
+		host[NAME_SIZE-1]=0;
+		/* Remove IP domain name */
+		charPtr = strchr(host, '.');
+		if (charPtr) *charPtr = 0;
+	}
 
+	/* no timestamp defined, set default to logserver current time */
+	if (strlen(timeOut) == 0) { 
+		struct tm time_tm;
+		valPtr = strptime(timeIn, "%a %b %d %T %Y", &time_tm);
+		if (valPtr) strftime(timeOut, NAME_SIZE, "%d-%b-%Y %T.00", &time_tm);
+		else strcpy(timeOut, "00-000-0000 00:00:00.00");    	
+		timeOut[NAME_SIZE-1]=0;
+		*timeDef = 1;
+		printf("no timestamp defined, use log server's, set timeDef=1\n");
+	} else {
+		*timeDef = 0;
+		printf("set timeDef=0\n");
+	}
 
-/* TESTING! */
-      printf("Tag: %s, Value: %s\n", thisTag, valPtr);
-/*---*/
-
-        lastPtr++;
-        ncharStripped = lastPtr - text;
-        charPtr = lastPtr;
-      } else {
-        charPtr = 0;
-      }
-    } else {
-      charPtr = 0;
-    }
-  }
-  if (strlen(host) == 0) {
-/*
-    strncpy(host, hostIn, NAME_SIZE);
-*/
-    strncpy(host, hostIn, HOSTNODE_SIZE);
-    host[NAME_SIZE-1]=0;
-    /* Remove IP domain name */
-    charPtr = strchr(host, '.');
-    if (charPtr) *charPtr = 0;
-  }
-
-  if (strlen(timeOut) == 0) {
-    struct tm time_tm;
-    
-    valPtr = strptime(timeIn, "%a %b %d %T %Y", &time_tm);
-    if (valPtr) {
-      strftime(timeOut, NAME_SIZE, "%d-%b-%Y %T.00", &time_tm);
-    } else {
-      strcpy(timeOut, "00-000-0000 00:00:00.00");
-    }
-    timeOut[NAME_SIZE-1]=0;
-    *timeDef = 1;
-printf("set timeDef=1\n");
-  }
-  else {
-    *timeDef = 0;
-printf("set timeDef=0\n");
-  }
-  return ncharStripped;
+	/* convert status and errCode to integers */
+	if (isdigit(msgStatus[0])) {
+		printf("msgStatus is numeric! msgStatus=%s\n", msgStatus);
+		*status = atoi(msgStatus);
+	} else {
+		printf("msgStatus is NOT numeric! msgStatus=%s\n", msgStatus);
+	}
+	if (isdigit(msgErrCode[0])) {
+		printf("msgErrCode is numeric! msgErrCode=%s\n", msgErrCode);
+		*errCode = atoi(msgErrCode);
+	} else {
+		printf("msgErrCode is NOT numeric! msgErrCode=%s\n", msgErrCode);
+	}
+	
+	return ncharStripped;
 }
 
   
