@@ -130,6 +130,7 @@ static void writeMessagesToLog (struct iocLogClient *pclient);
 static int stripTags(int nchar, char *hostIn, char *timeIn, char *text, char *timeOut, int *status, char *msgSeverity, 
                      char *system, char *host, int *errCode, char *process, char *user, int *timeDef);
 static int convertClientTime(char *timeIn, char *timeOut); 
+static int hasNextTag(char *text, char *found);
 
 int isNumeric (const char * s);
 
@@ -927,6 +928,33 @@ static int convertClientTime(char *timeIn,
     return converted;
 }
 
+static int hasNextTag(char *text, char *found) 
+{
+	int rc=0;
+	found = NULL;
+	char *end;
+
+	// find end of this message
+	end = strchr(text, '\n');
+
+	while (found == NULL) {
+		found = strstr(text-5,"stat=");
+		if (found == NULL) { found = strstr(text-5,"sevr="); } else break;
+		if (found == NULL) { found = strstr(text-4,"fac="); } else break;
+		if (found == NULL) { found = strstr(text-9,"facility="); } else break;
+		if (found == NULL) { found = strstr(text-5,"host="); } else break;
+		if (found == NULL) { found = strstr(text-5,"code="); } else break;
+		if (found == NULL) { found = strstr(text-5,"proc="); } else break;
+		if (found == NULL) { found = strstr(text-5,"user="); } else break;
+		if (found == NULL) { found = strstr(text-5,"time="); } else break;
+	}
+
+	// make sure tag is within this message
+	if (found != NULL && found < end) rc=1;
+
+	return rc;
+}
+
 /* the first 4 parameters are input from the pclient structure */
 /* the others are the parsed tag strings */
 /*static int stripTags(int nchar, char *hostIn, char *timeIn, char *text,
@@ -935,37 +963,54 @@ static int convertClientTime(char *timeIn,
                      char *system,    char *host, 
                      char *msgErrCode, char *process, char *user, int *timeDef
                      ) {
+ncharStripped = stripTags(nchar, pclient->name, pclient->ascii_time, &pclient->recvbuf[lineIndex],
+                app_ascii_time, &status, msgSeverity, system, host, &errCode, process, user, &app_time_def);
+
 */
 static int stripTags(int nchar, char *hostIn, char *timeIn, char *text, char *timeOut, int *status, char *msgSeverity, 
                      char *system, char *host, int *errCode, char *process, char *user, int *timeDef) {
-	char * charPtr = text;
-	char * tagPtr;
-	char * lastPtr;
-	char * valPtr;
+	char *charPtr = text;  
+	char *tagPtr;         
+	char *lastPtr;
+	char *valPtr;
+	char *nextTagPtr;
+	char *tmpPtr;
+	char *endPtr;  // end of this message
 	int    ncharStripped = 0;
 	int    charsize;
+	int rc;
 //	int status;
 //	int errCode;
 	int maxTagLen;
 	char msgStatus[NAME_SIZE];
 	char msgErrCode[NAME_SIZE];
-
+	char thisTag[1000];
+	char thisMsg[2000];
 /*  Initialize outputs.
 **  default is IOC
 **  host defaults to the host in pclient
 */
 //	msgStatus[0]   = 0;
-	msgSeverity[0] = 0;
-	strcpy(system, "IOC");
-	host[0]        = 0;
-	timeOut[0]     = 0;
-	maxTagLen = NAME_SIZE;    /* default maxTagLen to NAME_SIZE */
-	char thisTag[1000];
+//	msgSeverity[0] = 0;
+//	host[0]        = 0;
+//	timeOut[0]     = 0;
 	memset(thisTag, '\0', 1000);
-	memset(msgErrCode, '\0', strlen(msgErrCode));
+	memset(timeOut, '\0', strlen(timeOut));
 	memset(msgStatus, '\0', strlen(msgStatus));
+	memset(msgSeverity, '\0', strlen(msgSeverity));
+	memset(system, '\0', strlen(system));
+	memset(host, '\0', strlen(host));
+	memset(msgErrCode, '\0', strlen(msgErrCode));
+	memset(process, '\0', strlen(process));
+	memset(user, '\0', strlen(user));
 	*status=0;
 	*errCode=0;
+	*timeDef=0;
+
+	strcpy(system, "IOC");
+	maxTagLen = NAME_SIZE;    /* default maxTagLen to NAME_SIZE */
+
+//	findTag(text, tagPtr);
 
 /**  Look for tags at the beginning of the text and strip them out.
 **  Stop looking if there are no more tags or an unknown tag.
@@ -974,12 +1019,73 @@ static int stripTags(int nchar, char *hostIn, char *timeIn, char *text, char *ti
      THE FIRST SPACE - NEEDS FIXING.  INSTEAD, GO FOR THE LAST SPACE BEFORE THE "="
      PERHAPS STRTOK WOULD BE A BETTER PLAN.
      FOR NOW, DONT ALLOW EMBEDDED SPACES
-  */
 	while (charPtr) {
-		tagPtr  = strchr(charPtr, '=');
-		if (tagPtr) lastPtr = strchr(tagPtr, ' ');
+		tagPtr  = strchr(charPtr, '='); // look for a valid tag
+		if (tagPtr) {
+			lastPtr = strchr(tagPtr, ' '); // look for space, assume there will be at least one more space
+			}
+		}
 		else lastPtr = 0;
-/* ==============
+  */
+	// just parse this message, multiple messages are in pclient->recvbuf
+	endPtr = strchr(charPtr, '\n');
+
+/*	while (charPtr) {
+		tagPtr  = strchr(charPtr, '='); // look for a valid tag
+		if (tagPtr && (tagPtr < endPtr)) {
+			nextTagPtr = strchr(tagPtr+1, '='); // look for next tag
+			if (nextTagPtr && (nextTagPtr < endPtr)) {
+				tmpPtr = strchr(tagPtr, ' '); // look for space, assume there will be at least one more space
+				while (tmpPtr < nextTagPtr) {
+					//lastPtr = strchr(tagPtr, ' '); 
+					tmpPtr = strchr(tmpPtr, ' '); // look for space
+					//lastPtr  = tmpPtr; // look for next tag
+					if (tmpPtr < nextTagPtr) lastPtr = tmpPtr;
+					if (tmpPtr) tmpPtr += 1;
+				}
+				// make sure this is a tag and not a "=" within the message text
+				if (hasNextTag(nextTagPtr, tmpPtr) == 0) { // no next tag, the "=" is within the message text
+					printf("no next tag found for %s\n", tmpPtr);
+					lastPtr= strchr(tagPtr, ' ');
+				} else { 			
+				}		
+			}
+//			} else { // no tag, message text
+//				lastPtr= strchr(tagPtr, ' ');
+//				//lastPtr = 0;  
+//			}
+
+		}
+		else lastPtr = 0;
+*/
+	while (charPtr) {
+		tagPtr  = strchr(charPtr, '='); // look for a valid tag
+		if (tagPtr && (tagPtr < endPtr)) {
+			nextTagPtr = strchr(tagPtr+1, '='); // look for next tag
+			if (nextTagPtr && (nextTagPtr < endPtr)) {
+				// make sure this is a tag and not a "=" within the message text
+				rc = hasNextTag(nextTagPtr, tmpPtr);
+				if (rc == 0) { // no next tag, the "=" is within the message text
+					printf("no next tag found for %s\n", tmpPtr);
+					lastPtr= strchr(tagPtr, ' ');
+				} else { // this is a tag
+					tmpPtr = strchr(tagPtr, ' '); // look for space, assume there will be at least one more space
+					while (tmpPtr < nextTagPtr) {
+						//lastPtr = strchr(tagPtr, ' '); 
+						tmpPtr = strchr(tmpPtr, ' '); // look for space
+						//lastPtr  = tmpPtr; // look for next tag
+						if (tmpPtr < nextTagPtr) lastPtr = tmpPtr;
+						if (tmpPtr) tmpPtr += 1;
+					}
+				}
+			} else { // last tag
+				lastPtr= strchr(tagPtr, ' ');
+				//lastPtr = 0;  
+			}
+		}
+		else lastPtr = 0;
+
+/* ==============s
 TO DO:
 make sure all tags are here!  document them.
 reconcile with fwdClis, etc.
@@ -1049,9 +1155,13 @@ reconcile with fwdClis, etc.
 	}
 
 	/* convert status and errCode to integers */
+	/* atoi should return 0 if not numeric  */
+	*status = atoi(msgStatus);
+	*errCode = atoi(msgErrCode);
+/*
 	if (isdigit(msgStatus[0])) {
-		printf("msgStatus is numeric! msgStatus=%s\n", msgStatus);
-		*status = atoi(msgStatus);
+			printf("msgStatus is numeric! msgStatus=%s\n", msgStatus);
+			*status = atoi(msgStatus);
 	} else {
 		printf("msgStatus is NOT numeric! msgStatus=%s\n", msgStatus);
 	}
@@ -1061,7 +1171,8 @@ reconcile with fwdClis, etc.
 	} else {
 		printf("msgErrCode is NOT numeric! msgErrCode=%s\n", msgErrCode);
 	}
-	
+*/	
+	printf("----------------------------------\n");
 	return ncharStripped;
 }
 
