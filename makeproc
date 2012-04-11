@@ -1,3 +1,4 @@
+source ./envForBuild.bash
 proc common_parser=yes msg2Oracle.pc
 #proc SYS_INCLUDE=/testcases/testproc CODE=CPP common_parser=yes msg2Oracle.pc
 
