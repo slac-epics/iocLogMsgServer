@@ -3,8 +3,8 @@
 # Solaris rc2 script for EPICS IOC Log Server process.
 #
 #source /afs/slac/g/lcls/tools/script/ENVS.bash
-source /afs/slac/g/lcls/epics/setup/go_epics_3-14-12.bash
-#source /afs/slac/g/lcls/epics/setup/go_epics_3-14-8-2-lcls2.bash
+#source /afs/slac/g/lcls/epics/setup/go_epics_3-14-12.bash
+source /afs/slac/g/lcls/epics/setup/go_epics_3-14-8-2-lcls2.bash
 # point to test version of iocLogServer
 ##########################################################
 # THIS IS FOR RUNNING iocLogServer TEST IN BASE ENVIRONMENT
