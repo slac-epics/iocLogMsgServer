@@ -62,10 +62,9 @@ extern int db_insert
     char facility_name[41],
     char severity[21],
     char msg[681],
-/*    char logServer_ascii_time[30],
-    char app_ascii_time[30], */
-    char logServer_ascii_time[32],
-    char app_ascii_time[3], 
+    char logServer_ascii_time[30],
+    char app_ascii_time[30], 
+    char throttle_ascii_time[30],
     int  app_timestamp_def,
     int  code,
     char  hostnode[41],
@@ -127,11 +126,11 @@ static void writeMessagesToLog (struct iocLogClient *pclient);
                      char *system,    char *host, 
                      char *msgErrCode, char *process, char *user, int *timeDef);
 */
-static int stripTags(int nchar, char *hostIn, char *timeIn, char *text, char *timeOut, int *status, char *msgSeverity, 
+static int stripTags(int nchar, char *hostIn, char *timeIn, char *text, char *timeApp, int *status, char *msgSeverity, 
                      char *system, char *host, int *errCode, char *process, char *user, int *timeDef);
 static int convertClientTime(char *timeIn, char *timeOut); 
 static int hasNextTag(char *text, char *found);
-
+static void getThrottlingTimestamp(char *appTimestamp, char* throttlingTimestamp, int secondsToThrottle);
 int isNumeric (const char * s);
 
 #ifdef UNIX
@@ -648,8 +647,10 @@ static void readFromClient(void *pParam)
 printf ("====>getting from readFromClient: %s\n",pclient->name);
 printf ("====>got from readFromClientn");
 */
-	// try clearing pclient->recvbuf
-	memset(pclient->recvbuf, '\0', sizeof(pclient->recvbuf));
+
+printf("readFromClient incoming recvbuf  %s\n\n", pclient->recvbuf);
+	/* try clearing pclient->recvbuf */
+/*	memset(pclient->recvbuf, '\0', sizeof(pclient->recvbuf)); */
 
 	logTime(pclient);
 
@@ -694,126 +695,166 @@ printf ("====>writing!\n");
 	writeMessagesToLog (pclient);
 }
 
+/* getThrottlingTimestamp
+// Truncates second field of app timestamp based on secondsToThrottle
+// Currently ONLY TRUNCATES up to 1 day, resets at 00:00:00
+// AppTimestamp format should be 14-Feb-2012 10:10:38.00
+*/
+static void getThrottlingTimestamp(char *appTimestamp, char* throttlingTimestamp, int secondsToThrottle)
+{
+	char *pch;
+	int seconds=0;
+	int minutes=0;
+	int hour=0;
+	int throttlingSeconds=0;
+	int remainder=0;
+
+
+	printf("getThrottlingTimestamp appTimestamp=%s\n", appTimestamp);
+	/* assume timestamp in format 14-Feb-2012 10:10:38.00 */
+	pch = strchr(appTimestamp, ' ');
+	pch = pch+1;
+	hour = atoi(pch);
+	pch = strchr(appTimestamp, ':');
+	pch = pch+1;
+	minutes = atoi(pch);
+	pch = strchr(pch, ':');
+	pch = pch+1; /* pointer to xy.00 */
+
+	/* printf("pch=%s\n", pch); */
+	seconds = atoi(pch) + (hour*60 + minutes)*60;
+
+	remainder = seconds%secondsToThrottle;
+	throttlingSeconds = seconds - remainder;
+	printf(" seconds=%d, minutes=%d, hour=%d secondsToThrottle=%d, remainder=%d, throttlingSeconds=%d\n", seconds, minutes, hour, secondsToThrottle, remainder, throttlingSeconds);
+
+	/* now build up timestamp */
+	struct tm time;
+	char timestr[80];
+	/* convert string time to time struct */
+	strptime(appTimestamp, "%d-%b-%Y %H:%M:%S", &time);
+	time.tm_hour = 0;
+	time.tm_min = 0;
+	time.tm_sec = throttlingSeconds;
+	mktime(&time);
+	strftime(throttlingTimestamp, NAME_SIZE, "%d-%b-%Y %H:%M:%S", &time);	
+	printf(" appTimestamp='%s', throttlingTimestamp='%s'\n", appTimestamp, throttlingTimestamp);
+}
+
 /*
  * writeMessagesToLog()
  */
 static void writeMessagesToLog (struct iocLogClient *pclient)
 {
+	size_t lineIndex = 0;
+	int rc=0;
+
+	size_t nchar;
+	size_t nTotChar;
+	size_t crIndex;
+
+	int ntci;
+	int ncharStripped;
+
+	/* message parameters */
+	char appTime[NAME_SIZE];
+	char throttleTime[NAME_SIZE];
+	int status;
+	int errCode;
+	char msgSeverity[SEVERITY_SIZE]; 
+	char system[FACILITY_SIZE];
+	char host[HOSTNODE_SIZE];
+	char process[PROCESS_SIZE];
+	char user[USER_NAME_SIZE];
 	int logServer_id = 1;
-	int status = 0;
-    size_t lineIndex = 0;
-    char msg2write[MSG_SIZE];
-    int app_time_def = 0;
-	
+	char timeConverted;
+	char msg2write[MSG_SIZE];
+	int appTimeDef = 0;
+	int msgCount=1;
+	int commit=1;
+	int throttlingSeconds=7;
+
+	printf("iiiiiiiiiiiiiiiiiiiiiiiincoming recvbuf\n%s\niiiiiiiiiiiiiiiiiii\n", &pclient->recvbuf);
+
 	while (TRUE) {
-		size_t nchar;
-		size_t nTotChar;
-        size_t crIndex;
 
-		int ntci;
-		int ncharStripped;
-
-        char ascii_time[NAME_SIZE];
-        char app_ascii_time[NAME_SIZE];
-//        char msgStatus[NAME_SIZE];
-        int status;
-/*        char msgErrCode[NAME_SIZE]; */
-        int errCode;
-        char msgSeverity[SEVERITY_SIZE]; 
-        char system[FACILITY_SIZE];
-        char timeOut[ASCII_TIME_SIZE];
-        char host[HOSTNODE_SIZE];
-        char process[PROCESS_SIZE];
-        char user[USER_NAME_SIZE];
-        char pclientTime[NAME_SIZE];
-        char timeConverted;
-
-		if ( lineIndex >= pclient->nChar ) {
+		if (lineIndex >= pclient->nChar) {
 			pclient->nChar = 0u;
 			break;
 		}
 
-		/*
-		 * find the first carrage return and create
-		 * an entry in the log for the message associated
-		 * with it. If a carrage return does not exist and 
-		 * the buffer isnt full then move the partial message 
-		 * to the front of the buffer and wait for a carrage 
-		 * return to arrive. If the buffer is full and there
-		 * is no carrage return then force the message out and 
-		 * insert an artificial carrage return.
-		 */
+
+		/* Find the first carrage return and create an entry in the log for the message associated with it. 
+		   If a carrage return does not exist and the buffer isnt full then move the partial message 
+		   to the front of the buffer and wait for a carrage return to arrive. If the buffer is full and there
+		   is no carrage return then force the message out and insert an artificial carrage return. */
 		nchar = pclient->nChar - lineIndex;
-        for ( crIndex = lineIndex; crIndex < pclient->nChar; crIndex++ ) {
-            if ( pclient->recvbuf[crIndex] == '\n' ) {
-                /* printf ("====>MSG BUF IS *****%s*****\n", pclient->recvbuf); */
-                break;
-            }
-        }
-		if ( crIndex < pclient->nChar ) {
+printf("**1 pclient->nChar:%d, lineIndex=%d\n", pclient->nChar, lineIndex);
+printf("nchar=%d\n recvbuf=%s\n", nchar, &pclient->recvbuf[lineIndex]);
+		for (crIndex = lineIndex; crIndex < pclient->nChar; crIndex++) {
+	    	if ( pclient->recvbuf[crIndex] == '\n' ) {
+			/* printf ("====>MSG BUF IS *****%s*****\n", pclient->recvbuf); */
+			break;
+	    	}
+		}
+		if (crIndex < pclient->nChar) {
 			nchar = crIndex - lineIndex;
-        }
-        else {
-		    nchar = pclient->nChar - lineIndex;
+		} else {
+			nchar = pclient->nChar - lineIndex;
 			if ( nchar < sizeof ( pclient->recvbuf ) ) {
 				if ( lineIndex != 0 ) {
 					pclient->nChar = nchar;
-					memmove ( pclient->recvbuf, 
-                        & pclient->recvbuf[lineIndex], nchar);
+					memmove(pclient->recvbuf, & pclient->recvbuf[lineIndex], nchar);
+printf("**2 pclient->nChar:%d, lineIndex=%d\n", pclient->nChar, lineIndex);
+printf("nchar=%d\n recvbuf=%s\n", nchar, &pclient->recvbuf[lineIndex]);
+printf("lineIndex=%d, sizeof(recvbuf)=%d\n", lineIndex, sizeof(pclient->recvbuf));
+					memset(&pclient->recvbuf[lineIndex+1], '\0', sizeof(pclient->recvbuf) - (lineIndex+1));
+/* memset(thisTag, '\0', 1000); */
 				}
 				break;
 			}
 		}
+printf("**3 pclient->nChar:%d, lineIndex=%d\n", pclient->nChar, lineIndex);
+printf("nchar=%d\n recvbuf=%s\n", nchar, &pclient->recvbuf[lineIndex]);
 
-		/*
-		 * reset the file pointer if we hit the end of the file
-		 */
-		nTotChar = strlen(pclient->name) +
-				strlen(pclient->ascii_time) + nchar + 3u;
+		/* reset the file pointer if we hit the end of the file */
+		nTotChar = strlen(pclient->name) + strlen(pclient->ascii_time) + nchar + 3u;
 		assert (nTotChar <= INT_MAX);
 		ntci = (int) nTotChar;
 
-	      if (pclient->pserver->poutfile) {
-		if ( pclient->pserver->filePos+ntci >= pclient->pserver->max_file_size ) {
-			if ( pclient->pserver->max_file_size >= pclient->pserver->filePos ) {
-				unsigned nPadChar;
-				/*
-				 * this gets rid of leftover junk at the end of the file
-			 	 */
-				nPadChar = pclient->pserver->max_file_size - pclient->pserver->filePos;
-				while (nPadChar--) {
-					status = putc ( ' ', pclient->pserver->poutfile );
-					if ( status == EOF ) {
-						handleLogFileError();
+		if (pclient->pserver->poutfile) {
+			if ( pclient->pserver->filePos+ntci >= pclient->pserver->max_file_size ) {
+				if ( pclient->pserver->max_file_size >= pclient->pserver->filePos ) {
+					unsigned nPadChar;
+					/* this gets rid of leftover junk at the end of the file */
+					nPadChar = pclient->pserver->max_file_size - pclient->pserver->filePos;
+					while (nPadChar--) {
+						rc = putc ( ' ', pclient->pserver->poutfile );
+						if (rc == EOF) {
+							handleLogFileError();
+						}
 					}
 				}
+
+# ifdef DEBUG
+				fprintf (stderr, "ioc log server: resetting the file pointer\n" );
+# endif
+				fflush ( pclient->pserver->poutfile );
+				rewind ( pclient->pserver->poutfile );
+				pclient->pserver->filePos = ftell ( pclient->pserver->poutfile );
 			}
-
-#			ifdef DEBUG
-				fprintf ( stderr,
-					"ioc log server: resetting the file pointer\n" );
-#			endif
-			fflush ( pclient->pserver->poutfile );
-			rewind ( pclient->pserver->poutfile );
-			pclient->pserver->filePos = ftell ( pclient->pserver->poutfile );
 		}
-              }
-              
-	
-              assert (nchar<INT_MAX);
-              ncharStripped = stripTags(nchar, pclient->name, pclient->ascii_time, &pclient->recvbuf[lineIndex],
-                app_ascii_time, &status, msgSeverity, system, host, &errCode, process, user, &app_time_def);
+    
+		assert (nchar<INT_MAX);
 
-/*              ncharStripped = stripTags(
-                nchar, pclient->name, pclient->ascii_time,
-                &pclient->recvbuf[lineIndex],
-                app_ascii_time, msgStatus, msgSeverity, system, host,
-                msgErrCode, process, user, &app_time_def);
+		ncharStripped = stripTags(nchar, pclient->name, pclient->ascii_time, &pclient->recvbuf[lineIndex], 
+		                          appTime, &status, msgSeverity, system, host, &errCode, process, user, &appTimeDef);
 
-                if (isNumeric(msgErrCode))
-                   { errCode = atoi(msgErrCode); }
-                else
-                   { errCode = 0; }
+/*		ncharStripped = stripTags(nchar, pclient->name, pclient->ascii_time, &pclient->recvbuf[lineIndex], app_ascii_time, 
+		                          msgStatus, msgSeverity, system, host, msgErrCode, process, user, &app_time_def);
+
+		if (isNumeric(msgErrCode)) { errCode = atoi(msgErrCode); }
+		else { errCode = 0; }
 ===============
 TO DO:
 convert msgStatus to status, msgErrCode to errCode
@@ -841,66 +882,49 @@ printf("%s\n", "===================================");
 	      /* dummy this up: app_time, orig_time are both 99999 */
               /* dummy this up: status is 1, error_code is 2, verbosity is 3 */
               /* set commit flag to 1.  May only want to commit every X rows tho... */
-              strncpy(msg2write, &pclient->recvbuf[lineIndex]+ncharStripped, (int) nchar-ncharStripped);
-              msg2write[(int) nchar-ncharStripped] = 0;
 
+		/* get message text */
+		strncpy(msg2write, &pclient->recvbuf[lineIndex]+ncharStripped, (int) nchar-ncharStripped);
+		msg2write[(int) nchar-ncharStripped] = 0;
+
+		/* format throttling timestamp */
+		getThrottlingTimestamp(appTime, throttleTime, throttlingSeconds);
 /*
-              printf ("inserting *%s* *%s* *%s* *%s*\n",system, host, msg2write, msgSeverity); 
-              printf("pclient time is %s\n", pclient->ascii_time);
+		printf ("inserting *%s* *%s* *%s* *%s*\n",system, host, msg2write, msgSeverity); 
+		printf("pclient time is %s\n", pclient->ascii_time);
 */
 /*
-              don't need this conversion: Oracle has to do it anyway
-              convertClientTime(pclient->ascii_time, pclientTime);
+		don't need this conversion: Oracle has to do it anyway
+		convertClientTime(pclient->ascii_time, pclientTime);
 
 */
-              if ( 
-                 db_insert(0, 
-                   logServer_id,
-                   system,
-                   msgSeverity,
-                   msg2write,
-                   pclient->ascii_time,  
-                   app_ascii_time,
-                   app_time_def,
-                   errCode,  /* errCode */
-                   host,
-                   user,
-                   status,   /* msgStatus */
-                   process,  /* process */
-                   1, /* msgCount */
-                   1) /* commit flag */
-                  ) 
-                  {
-                  /* printf("%s\n", "SUCCESSFUL INSERT INTO ERRLOG TABLE"); */
-                  printf("%s %s %s\n", system,host,"msg2Oracle");
-                  }
-               else
-                  {
-                  printf("%s for message:  %s %s %s\n", "ERROR INSERTING INTO ERRLOG TABLE", system, host, msg2write);
-                  }
-                 
-	      if (pclient->pserver->poutfile) {
-		/*
-		 * NOTE: !! change format string here then must
-		 * change nTotChar calc above !!
-		 */
-		status = fprintf(
-			pclient->pserver->poutfile,
-			"%s %s %.*s\n",
-			pclient->name,
-			pclient->ascii_time,
-			(int) nchar-ncharStripped,
-			&pclient->recvbuf[lineIndex]+ncharStripped);
-		if (status<0) {
-			handleLogFileError();
+		rc = db_insert(0, logServer_id, system, msgSeverity, msg2write, pclient->ascii_time, appTime, throttleTime, appTimeDef,
+		               errCode, host, user, status, process, msgCount, commit); 
+		
+
+		if (rc == 1) {
+			/* printf("%s\n", "SUCCESSFUL INSERT INTO ERRLOG TABLE"); */
+			printf("%s %s %s\n", system,host,"msg2Oracle");
 		} else {
-		    if (status != (ntci-ncharStripped)) {
-			    fprintf(stderr, "iocLogServer: didnt calculate number of characters correctly?\n");
-		    }
-		    pclient->pserver->filePos += status;
-                }
-              }
-              lineIndex += nchar+1u;
+			printf("%s for message:  %s %s %s\n", "ERROR INSERTING INTO ERRLOG TABLE", system, host, msg2write);
+		}
+
+		if (pclient->pserver->poutfile) {
+		/* NOTE: !! change format string here then must change nTotChar calc above !! */
+			rc = fprintf(pclient->pserver->poutfile, "%s %s %.*s\n", pclient->name,	pclient->ascii_time, (int) nchar-ncharStripped,	&pclient->recvbuf[lineIndex]+ncharStripped);
+			if (rc < 0) {
+				handleLogFileError();
+			} else {
+		    	if (rc != (ntci-ncharStripped)) {
+			    	fprintf(stderr, "iocLogServer: didn't calculate number of characters correctly?\n");
+		    	}
+		    	pclient->pserver->filePos += rc;
+			}
+		}
+	lineIndex += nchar+1u;
+
+	printf("----------------------------------\n");
+
 	}
 
 /* JROCK TESTING - RUN WITHOUT CONNECTION TO MSGSENDER
@@ -928,28 +952,29 @@ static int convertClientTime(char *timeIn,
     return converted;
 }
 
+/* checks if there is another tag within this message */
 static int hasNextTag(char *text, char *found) 
 {
 	int rc=0;
 	found = NULL;
 	char *end;
+	int done = 0; 
 
-	// find end of this message
+	/* find end of this message */
 	end = strchr(text, '\n');
+	
+	/* look for specific tags */
+	found = strstr(text-5,"stat=");
+	if (found == NULL) { found = strstr(text-5,"sevr="); } 
+	if (found == NULL) { found = strstr(text-4,"fac="); } 
+	if (found == NULL) { found = strstr(text-9,"facility="); } 
+	if (found == NULL) { found = strstr(text-5,"host="); } 
+	if (found == NULL) { found = strstr(text-5,"code="); } 
+	if (found == NULL) { found = strstr(text-5,"proc="); } 
+	if (found == NULL) { found = strstr(text-5,"user="); } 
+	if (found == NULL) { found = strstr(text-5,"time="); } 
 
-	while (found == NULL) {
-		found = strstr(text-5,"stat=");
-		if (found == NULL) { found = strstr(text-5,"sevr="); } else break;
-		if (found == NULL) { found = strstr(text-4,"fac="); } else break;
-		if (found == NULL) { found = strstr(text-9,"facility="); } else break;
-		if (found == NULL) { found = strstr(text-5,"host="); } else break;
-		if (found == NULL) { found = strstr(text-5,"code="); } else break;
-		if (found == NULL) { found = strstr(text-5,"proc="); } else break;
-		if (found == NULL) { found = strstr(text-5,"user="); } else break;
-		if (found == NULL) { found = strstr(text-5,"time="); } else break;
-	}
-
-	// make sure tag is within this message
+	/* make sure tag is within this message */
 	if (found != NULL && found < end) rc=1;
 
 	return rc;
@@ -966,8 +991,12 @@ static int hasNextTag(char *text, char *found)
 ncharStripped = stripTags(nchar, pclient->name, pclient->ascii_time, &pclient->recvbuf[lineIndex],
                 app_ascii_time, &status, msgSeverity, system, host, &errCode, process, user, &app_time_def);
 
+
+//
+// timeIn : logserver time
+// timeApp : application time 
 */
-static int stripTags(int nchar, char *hostIn, char *timeIn, char *text, char *timeOut, int *status, char *msgSeverity, 
+static int stripTags(int nchar, char *hostIn, char *timeIn, char *text, char *timeApp, int *status, char *msgSeverity, 
                      char *system, char *host, int *errCode, char *process, char *user, int *timeDef) {
 	char *charPtr = text;  
 	char *tagPtr;         
@@ -975,12 +1004,10 @@ static int stripTags(int nchar, char *hostIn, char *timeIn, char *text, char *ti
 	char *valPtr;
 	char *nextTagPtr;
 	char *tmpPtr;
-	char *endPtr;  // end of this message
-	int    ncharStripped = 0;
-	int    charsize;
+	char *endPtr;  /* end of this message */
+	int  ncharStripped = 0;
+	int  charsize;
 	int rc;
-//	int status;
-//	int errCode;
 	int maxTagLen;
 	char msgStatus[NAME_SIZE];
 	char msgErrCode[NAME_SIZE];
@@ -990,12 +1017,8 @@ static int stripTags(int nchar, char *hostIn, char *timeIn, char *text, char *ti
 **  default is IOC
 **  host defaults to the host in pclient
 */
-//	msgStatus[0]   = 0;
-//	msgSeverity[0] = 0;
-//	host[0]        = 0;
-//	timeOut[0]     = 0;
 	memset(thisTag, '\0', 1000);
-	memset(timeOut, '\0', strlen(timeOut));
+	memset(timeApp, '\0', strlen(timeApp));  /* formatted app time */
 	memset(msgStatus, '\0', strlen(msgStatus));
 	memset(msgSeverity, '\0', strlen(msgSeverity));
 	memset(system, '\0', strlen(system));
@@ -1009,8 +1032,6 @@ static int stripTags(int nchar, char *hostIn, char *timeIn, char *text, char *ti
 
 	strcpy(system, "IOC");
 	maxTagLen = NAME_SIZE;    /* default maxTagLen to NAME_SIZE */
-
-//	findTag(text, tagPtr);
 
 /**  Look for tags at the beginning of the text and strip them out.
 **  Stop looking if there are no more tags or an unknown tag.
@@ -1027,8 +1048,6 @@ static int stripTags(int nchar, char *hostIn, char *timeIn, char *text, char *ti
 		}
 		else lastPtr = 0;
   */
-	// just parse this message, multiple messages are in pclient->recvbuf
-	endPtr = strchr(charPtr, '\n');
 
 /*	while (charPtr) {
 		tagPtr  = strchr(charPtr, '='); // look for a valid tag
@@ -1058,29 +1077,29 @@ static int stripTags(int nchar, char *hostIn, char *timeIn, char *text, char *ti
 		}
 		else lastPtr = 0;
 */
+	/* find end of this message, multiple messages are in pclient->recvbuf */
+	endPtr = strchr(charPtr, '\n');
+
+	/* start parsing message */
 	while (charPtr) {
-		tagPtr  = strchr(charPtr, '='); // look for a valid tag
+		tagPtr  = strchr(charPtr, '='); /* look for a valid tag */
 		if (tagPtr && (tagPtr < endPtr)) {
-			nextTagPtr = strchr(tagPtr+1, '='); // look for next tag
+			nextTagPtr = strchr(tagPtr+1, '='); /* look for next tag */
 			if (nextTagPtr && (nextTagPtr < endPtr)) {
-				// make sure this is a tag and not a "=" within the message text
-				rc = hasNextTag(nextTagPtr, tmpPtr);
-				if (rc == 0) { // no next tag, the "=" is within the message text
-					printf("no next tag found for %s\n", tmpPtr);
+				/* make sure this is a tag and not a "=" within the message text */
+				rc = hasNextTag(nextTagPtr, tmpPtr);					
+				if (rc == 0) { /* no next tag, the "=" is within the message text */
 					lastPtr= strchr(tagPtr, ' ');
-				} else { // this is a tag
-					tmpPtr = strchr(tagPtr, ' '); // look for space, assume there will be at least one more space
+				} else { /* this is a tag */
+					tmpPtr = strchr(tagPtr, ' '); /* look for space, assume there will be at least one more space */
 					while (tmpPtr < nextTagPtr) {
-						//lastPtr = strchr(tagPtr, ' '); 
-						tmpPtr = strchr(tmpPtr, ' '); // look for space
-						//lastPtr  = tmpPtr; // look for next tag
+						tmpPtr = strchr(tmpPtr, ' '); /* look for space */
 						if (tmpPtr < nextTagPtr) lastPtr = tmpPtr;
 						if (tmpPtr) tmpPtr += 1;
 					}
 				}
-			} else { // last tag
+			} else { /* last tag */
 				lastPtr= strchr(tagPtr, ' ');
-				//lastPtr = 0;  
 			}
 		}
 		else lastPtr = 0;
@@ -1102,7 +1121,7 @@ reconcile with fwdClis, etc.
 			else if ( !strncmp(charPtr,"proc=",5)) { valPtr = process; maxTagLen = PROCESS_SIZE; strcpy(thisTag,"proc"); }
 			else if ( !strncmp(charPtr,"user=",5)) { valPtr = user; maxTagLen = USER_NAME_SIZE; strcpy(thisTag,"user"); }
 			else if ((!strncmp(charPtr,"time=",5)) && (charPtr[7]  == '-') && (charPtr[11] == '-') && (charPtr[16] == ' ')) {
-				valPtr = timeOut; strcpy(thisTag,"time");
+				valPtr = timeApp; strcpy(thisTag,"time");
 				lastPtr = tagPtr + 24;
 			} else valPtr = 0;
 
@@ -1127,7 +1146,7 @@ reconcile with fwdClis, etc.
 			charPtr = 0;
 		}
 	}
-	printf("Msg: %s\n", text); 
+/*	printf("Msg: %s\n", text);  */
 
 	/* now clean up data and handle defaults */
 	/* no host defined, set default */
@@ -1140,22 +1159,23 @@ reconcile with fwdClis, etc.
 		if (charPtr) *charPtr = 0;
 	}
 
-	/* no timestamp defined, set default to logserver current time */
-	if (strlen(timeOut) == 0) { 
+	/* check if timestamp passed in */
+	if (strlen(timeApp) == 0) { /* no timestamp defined, set default to logserver current time */
 		struct tm time_tm;
-		valPtr = strptime(timeIn, "%a %b %d %T %Y", &time_tm);
-		if (valPtr) strftime(timeOut, NAME_SIZE, "%d-%b-%Y %T.00", &time_tm);
-		else strcpy(timeOut, "00-000-0000 00:00:00.00");    	
-		timeOut[NAME_SIZE-1]=0;
+		tmpPtr = strptime(timeIn, "%a %b %d %T %Y", &time_tm);
+		/* set app timestamp to logserver timestamp in format 14-Feb-2012 10:10:38.00 */
+		if (tmpPtr) strftime(timeApp, NAME_SIZE, "%d-%b-%Y %T.00", &time_tm);
+		else strcpy(timeApp, "00-000-0000 00:00:00.00"); 
+		timeApp[NAME_SIZE-1]=0;
 		*timeDef = 1;
 		printf("no timestamp defined, use log server's, set timeDef=1\n");
 	} else {
 		*timeDef = 0;
-		printf("set timeDef=0\n");
+		printf("app timestamp defined, set timeDef=0\n");
 	}
 
 	/* convert status and errCode to integers */
-	/* atoi should return 0 if not numeric  */
+	/* atoi should return 0 if not numeric or first part of numeric string if alphanumeric string */
 	*status = atoi(msgStatus);
 	*errCode = atoi(msgErrCode);
 /*
@@ -1172,7 +1192,6 @@ reconcile with fwdClis, etc.
 		printf("msgErrCode is NOT numeric! msgErrCode=%s\n", msgErrCode);
 	}
 */	
-	printf("----------------------------------\n");
 	return ncharStripped;
 }
 
@@ -1219,7 +1238,6 @@ static void freeLogClient(struct iocLogClient     *pclient)
 	return;
 }
 
-
 /*
  *
  *	logTime()
@@ -1242,7 +1260,6 @@ static void logTime(struct iocLogClient *pclient)
 	}
 }
 
-
 /*
  *
  *	getConfig()
@@ -1295,7 +1312,6 @@ static int getConfig(void)
 }
 
 
-
 /*
  *
  *	failureNotify()
@@ -1310,7 +1326,6 @@ static void envFailureNotify(const ENV_PARAM *pparam)
 }
 
 
-
 #ifdef UNIX
 static int setupSIGHUP(struct ioc_log_server *pserver)
 {
@@ -1436,7 +1451,6 @@ static void serviceSighupRequest(void *pParam)
 }
 
 
-
 /*
  *
  *	getDirectory()
