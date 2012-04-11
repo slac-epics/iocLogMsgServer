@@ -140,6 +140,7 @@ int db_insert(errlog_id,
               msg,
               logServer_ascii_time,
               app_ascii_time,
+              throttle_ascii_time,	
               app_timestamp_def,
               err_code,
               hostnode,
@@ -157,6 +158,7 @@ int db_insert(errlog_id,
     char msg[681];
     char logServer_ascii_time[32];
     char app_ascii_time[32];
+    char throttle_ascii_time[32];
     int  app_timestamp_def;
     int  err_code;
     char  hostnode[41];
@@ -174,6 +176,7 @@ int db_insert(errlog_id,
   EXEC SQL VAR msg IS STRING(681);
   EXEC SQL VAR logServer_ascii_time IS STRING(32);
   EXEC SQL VAR app_ascii_time IS STRING(32);
+  EXEC SQL VAR throttle_ascii_time IS STRING(32);
   EXEC SQL VAR app_timestamp_def IS INTEGER;
   EXEC SQL VAR err_code IS INTEGER;
   EXEC SQL VAR hostnode IS STRING(41);
@@ -232,7 +235,7 @@ printf ("logServer_ascii_time: %s app_ascii_time: %s\n", logServer_ascii_time, a
                                  :msg,
                                  to_timestamp(:logServer_ascii_time, 'DY MON DD HH24:MI:SS.FF YYYY'),
                                  to_timestamp(:app_ascii_time, 'DD-MON-YYYY HH24:MI:SS.FF'),
-                                 to_timestamp(:app_ascii_time, 'DD-MON-YYYY HH24:MI:SS.FF'), 
+                                 to_timestamp(:throttle_ascii_time, 'DD-MON-YYYY HH24:MI:SS.FF'), 
                                  :app_timestamp_def,
                                  :err_code,
                                  :hostnode,
