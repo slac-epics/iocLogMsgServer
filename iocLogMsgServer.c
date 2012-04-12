@@ -89,6 +89,16 @@ static char ioc_log_file_command[256];
 #define DESTINATION_SIZE 81
 #define HOSTNODE_SIZE 41
 #define PROCESS_SIZE 41
+#define THROTTLE_MSG_SIZE MSG_SIZE*3
+
+#define THROTTLE_MSG         1 << 0
+#define THROTTLE_FACILITY    1 << 1
+#define THROTTLE_SEVERITY    1 << 2
+#define THROTTLE_ERROR       1 << 3
+#define THROTTLE_HOST        1 << 4
+#define THROTTLE_USER        1 << 5
+#define THROTTLE_STATUS      1 << 6
+#define THROTTLE_PROCESS     1 << 7
 
 struct iocLogClient {
 	int insock;
@@ -115,6 +125,7 @@ static void acceptNewClient (void *pParam);
 static void readFromClient(void *pParam);
 static void logTime (struct iocLogClient *pclient);
 static int getConfig(void);
+static int openLogFileOld(struct ioc_log_server *pserver);
 static int openLogFile(struct ioc_log_server *pserver);
 static void handleLogFileError(void);
 static void envFailureNotify(const ENV_PARAM *pparam);
@@ -131,6 +142,7 @@ static int stripTags(int nchar, char *hostIn, char *timeIn, char *text, char *ti
 static int convertClientTime(char *timeIn, char *timeOut); 
 static int hasNextTag(char *text, char *found);
 static void getThrottlingTimestamp(char *appTimestamp, char* throttlingTimestamp, int secondsToThrottle);
+static void getThrottlingString(char *msg, char *system, char *severity, int error, char *host, char *user, int status, char *process, char *throttleString, int throttleStringMask);
 int isNumeric (const char * s);
 
 #ifdef UNIX
@@ -148,7 +160,7 @@ static int sighupPipe[2];
  */
 int main(void)
 {
-        int msgNum = 0;
+	int msgNum = 0;
 	struct sockaddr_in serverAddr;	/* server's address */
 	struct timeval timeout;
 	int status;
@@ -435,12 +447,12 @@ static int seekLatestLine (struct ioc_log_server *pserver)
 	return IOCLS_OK;
 }
 
-
+
 /*
  *	openLogFile()
  *
  */
-static int openLogFile (struct ioc_log_server *pserver)
+static int openLogFileOld (struct ioc_log_server *pserver)
 {
 	enum TF_RETURN ret;
 
@@ -479,7 +491,101 @@ static int openLogFile (struct ioc_log_server *pserver)
     return IOCLS_OK;
 }
 
-
+/* checkLogFile()
+// checks file size and copies to <logfile>.log.bak if too big
+*/
+static int checkLogFile(struct ioc_log_server *pserver)
+{
+	int fileSize=0;
+	char newname[256];
+	int rc=IOCLS_OK;
+	int rrc = 0;
+
+	fseek(pserver->poutfile, 0, SEEK_END);
+	fileSize = ftell(pserver->poutfile);
+
+	if (fileSize > pserver->max_file_size) {
+		fclose (pserver->poutfile);
+		strcpy(newname, pserver->outfile);
+		strcat(newname, ".bak");
+		printf("Logfile too big %d, Rename %s to %s\n", fileSize, pserver->outfile, newname);
+		rrc = rename(ioc_log_file_name, newname);
+		if (rrc != 0) printf("ERROR renaming %s to %s, rc=%d\n", pserver->outfile, newname, rrc); /* don't return error, hopefully renaming works later */
+		
+		/* reset logfile file pointer */
+		pserver->poutfile = fopen(ioc_log_file_name, "w");
+		if (!pserver->poutfile) {
+			pserver->poutfile = stderr;
+			rc = IOCLS_ERROR;
+			return rc;
+		}
+	}
+	/* set file pos */
+    pserver->filePos = ftell(pserver->poutfile); 
+	return rc;
+}
+
+/*
+ *	openLogFile()
+ *
+ */
+static int openLogFile(struct ioc_log_server *pserver)
+{
+	enum TF_RETURN ret;
+	int rc = IOCLS_OK;
+
+	if (ioc_log_file_limit==0u) {
+		pserver->poutfile = stderr;
+		return IOCLS_ERROR;
+	}
+
+	if (pserver->poutfile && pserver->poutfile != stderr){
+		fclose (pserver->poutfile);
+		pserver->poutfile = NULL;
+	}
+
+
+    if (strlen(ioc_log_file_name)) {
+/*		pserver->poutfile = fopen(ioc_log_file_name, "r+"); /* open for reading and writing 
+		if (pserver->poutfile) { /* file exists, and is opened for rw 
+			fclose (pserver->poutfile);
+			pserver->poutfile = NULL;
+			ret = truncateFile (ioc_log_file_name, ioc_log_file_limit);
+			if (ret==TF_ERROR) {
+				fprintf(stderr, "ERROR opening logfile %s for r+\n", ioc_log_file_name);
+				return IOCLS_ERROR;
+			}
+
+			pserver->poutfile = fopen(ioc_log_file_name, "r+");
+
+		} else { /* file didn't exist, open for writing 
+			pserver->poutfile = fopen(ioc_log_file_name, "w");
+		}
+*/
+		strcpy(pserver->outfile, ioc_log_file_name);
+		pserver->max_file_size = ioc_log_file_limit;
+		
+		/* try opening for reading and writing */
+		pserver->poutfile = fopen(ioc_log_file_name, "a"); 
+		if (pserver->poutfile) {
+			checkLogFile(pserver);  /* check logfile if logfile is too big and needs to be renamed */
+		} else {
+			pserver->poutfile = fopen(ioc_log_file_name, "w");
+			fclose (pserver->poutfile);
+			pserver->poutfile = fopen(ioc_log_file_name, "a"); 
+			if (!pserver->poutfile) {
+				fprintf(stderr, "ERROR opening logfile %s\n", ioc_log_file_name);
+				pserver->poutfile = stderr;
+				return IOCLS_ERROR;
+			}
+		}
+/*        return seekLatestLine (pserver); */	
+    }
+/*    return IOCLS_OK; */
+	printf("Successfully opened logfile %s\n", pserver->outfile);
+	return rc;
+}
+
 /*
  *	handleLogFileError()
  *
@@ -630,7 +736,6 @@ printf ("====>accepting new Client: %s\n", pclient->name);
 }
 
 
-
 /*
  * readFromClient()
  * 
@@ -649,6 +754,7 @@ printf ("====>got from readFromClientn");
 */
 
 printf("readFromClient incoming recvbuf  %s\n\n", pclient->recvbuf);
+	/* clear partial buffer in writeMessagesToLog, clearing entire buffer here inadvertently deletes last message */
 	/* try clearing pclient->recvbuf */
 /*	memset(pclient->recvbuf, '\0', sizeof(pclient->recvbuf)); */
 
@@ -694,6 +800,39 @@ printf ("====>writing!\n");
 */
 	writeMessagesToLog (pclient);
 }
+
+/* getThrottlingString
+// Concatenates valid columns to create string for database to use as constraint
+*/
+static void getThrottlingString(char *msg, char *facility, char *severity, int error, char *host, char *user, int status, char *process, char *throttleString, int throttleStringMask)
+{
+	printf("throttle mask:\n msg=%d\n facility=%d\n severity=%d\n error=%d\n host=%d\n user=%d\n status=%d\n process=%d\n", 
+			THROTTLE_MSG, THROTTLE_FACILITY, THROTTLE_SEVERITY, THROTTLE_ERROR, THROTTLE_HOST, THROTTLE_USER, THROTTLE_STATUS, THROTTLE_PROCESS);
+	char buff[256];
+
+	memset(throttleString, '\0', THROTTLE_MSG_SIZE);
+
+
+	if (throttleStringMask & THROTTLE_MSG) { strcpy(throttleString, msg); printf("-msg"); }
+	if (throttleStringMask & THROTTLE_FACILITY) { strcat(throttleString, facility); printf("-facility"); }
+	if (throttleStringMask & THROTTLE_SEVERITY) { strcat(throttleString, severity); printf("-severity"); }
+	if (throttleStringMask & THROTTLE_ERROR) { 
+		sprintf(buff, "%d", error);
+		strcat(throttleString, buff); 
+		printf("-rror");
+	}
+	if (throttleStringMask & THROTTLE_HOST) { strcat(throttleString, host); printf("-host"); }
+	if (throttleStringMask & THROTTLE_USER) { strcat(throttleString, user); printf("-user"); }
+	if (throttleStringMask & THROTTLE_STATUS) { 
+		sprintf(buff, "%d", status);
+		strcat(throttleString, buff); 
+		printf("-status");
+	}
+	if (throttleStringMask & THROTTLE_PROCESS) { strcat(throttleString, process); printf("-process"); }
+
+	printf(" throttleMask=%d\n throttleString=%s\n", throttleStringMask, throttleString);
+}
+
 
 /* getThrottlingTimestamp
 // Truncates second field of app timestamp based on secondsToThrottle
@@ -773,8 +912,10 @@ static void writeMessagesToLog (struct iocLogClient *pclient)
 	int msgCount=1;
 	int commit=1;
 	int throttlingSeconds=7;
+	char throttleString[THROTTLE_MSG_SIZE];
+	int throttleStringMask;
 
-	printf("iiiiiiiiiiiiiiiiiiiiiiiincoming recvbuf\n%s\niiiiiiiiiiiiiiiiiii\n", &pclient->recvbuf);
+	throttleStringMask = THROTTLE_FACILITY | THROTTLE_ERROR | THROTTLE_HOST;
 
 	while (TRUE) {
 
@@ -789,8 +930,6 @@ static void writeMessagesToLog (struct iocLogClient *pclient)
 		   to the front of the buffer and wait for a carrage return to arrive. If the buffer is full and there
 		   is no carrage return then force the message out and insert an artificial carrage return. */
 		nchar = pclient->nChar - lineIndex;
-printf("**1 pclient->nChar:%d, lineIndex=%d\n", pclient->nChar, lineIndex);
-printf("nchar=%d\n recvbuf=%s\n", nchar, &pclient->recvbuf[lineIndex]);
 		for (crIndex = lineIndex; crIndex < pclient->nChar; crIndex++) {
 	    	if ( pclient->recvbuf[crIndex] == '\n' ) {
 			/* printf ("====>MSG BUF IS *****%s*****\n", pclient->recvbuf); */
@@ -805,28 +944,23 @@ printf("nchar=%d\n recvbuf=%s\n", nchar, &pclient->recvbuf[lineIndex]);
 				if ( lineIndex != 0 ) {
 					pclient->nChar = nchar;
 					memmove(pclient->recvbuf, & pclient->recvbuf[lineIndex], nchar);
-printf("**2 pclient->nChar:%d, lineIndex=%d\n", pclient->nChar, lineIndex);
-printf("nchar=%d\n recvbuf=%s\n", nchar, &pclient->recvbuf[lineIndex]);
-printf("lineIndex=%d, sizeof(recvbuf)=%d\n", lineIndex, sizeof(pclient->recvbuf));
-					memset(&pclient->recvbuf[lineIndex+1], '\0', sizeof(pclient->recvbuf) - (lineIndex+1));
-/* memset(thisTag, '\0', 1000); */
+					memset(&pclient->recvbuf[lineIndex+1], '\0', sizeof(pclient->recvbuf) - (lineIndex+1)); /* clear rest of buffer */
+					lineIndex=0;
 				}
 				break;
 			}
 		}
-printf("**3 pclient->nChar:%d, lineIndex=%d\n", pclient->nChar, lineIndex);
-printf("nchar=%d\n recvbuf=%s\n", nchar, &pclient->recvbuf[lineIndex]);
 
 		/* reset the file pointer if we hit the end of the file */
 		nTotChar = strlen(pclient->name) + strlen(pclient->ascii_time) + nchar + 3u;
 		assert (nTotChar <= INT_MAX);
 		ntci = (int) nTotChar;
-
+/*
 		if (pclient->pserver->poutfile) {
 			if ( pclient->pserver->filePos+ntci >= pclient->pserver->max_file_size ) {
 				if ( pclient->pserver->max_file_size >= pclient->pserver->filePos ) {
 					unsigned nPadChar;
-					/* this gets rid of leftover junk at the end of the file */
+					// this gets rid of leftover junk at the end of the file 
 					nPadChar = pclient->pserver->max_file_size - pclient->pserver->filePos;
 					while (nPadChar--) {
 						rc = putc ( ' ', pclient->pserver->poutfile );
@@ -844,7 +978,10 @@ printf("nchar=%d\n recvbuf=%s\n", nchar, &pclient->recvbuf[lineIndex]);
 				pclient->pserver->filePos = ftell ( pclient->pserver->poutfile );
 			}
 		}
-    
+*/    
+		/* check log file size and move to backup if too big 
+		checkLogFile(pclient->pserver);
+*/
 		assert (nchar<INT_MAX);
 
 		ncharStripped = stripTags(nchar, pclient->name, pclient->ascii_time, &pclient->recvbuf[lineIndex], 
@@ -889,6 +1026,10 @@ printf("%s\n", "===================================");
 
 		/* format throttling timestamp */
 		getThrottlingTimestamp(appTime, throttleTime, throttlingSeconds);
+
+	printf("throttleStringMask incoming=%d\n", throttleStringMask);
+		/* format throttling string */
+		getThrottlingString(msg2write, system, msgSeverity, errCode, host, user, status, process, throttleString, throttleStringMask);
 /*
 		printf ("inserting *%s* *%s* *%s* *%s*\n",system, host, msg2write, msgSeverity); 
 		printf("pclient time is %s\n", pclient->ascii_time);
@@ -910,8 +1051,11 @@ printf("%s\n", "===================================");
 		}
 
 		if (pclient->pserver->poutfile) {
-		/* NOTE: !! change format string here then must change nTotChar calc above !! */
+		/* NOTE: !! change format string here then must change nTotChar calc above !! 
 			rc = fprintf(pclient->pserver->poutfile, "%s %s %.*s\n", pclient->name,	pclient->ascii_time, (int) nchar-ncharStripped,	&pclient->recvbuf[lineIndex]+ncharStripped);
+*/
+			rc = fprintf(pclient->pserver->poutfile, "%s %s %s\n", pclient->name,	pclient->ascii_time, msg2write);
+			/* do we need this check?? */
 			if (rc < 0) {
 				handleLogFileError();
 			} else {
@@ -921,9 +1065,9 @@ printf("%s\n", "===================================");
 		    	pclient->pserver->filePos += rc;
 			}
 		}
-	lineIndex += nchar+1u;
-
-	printf("----------------------------------\n");
+		lineIndex += nchar+1u;
+	
+		printf("----------------------------------\n");
 
 	}
 
