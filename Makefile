@@ -17,7 +17,7 @@ include $(TOP)/configure/CONFIG
 PROD_HOST_DEFAULT = iocLogMsgServer msgReceiver 
 PROD_HOST_WIN32   = iocLogMsgServer
 PROD_SYS_LIBS_WIN32 = ws2_32 advapi32 user32
-PROD_LIBS = Com 
+PROD_LIBS = Com ca
 
 USR_LDFLAGS_DEFAULT += -L/afs/slac/package/oracle/d/linux/11.1.0/lib
 USR_CFLAGS = -O0
