@@ -25,6 +25,8 @@
  *      Date:       11/02/07
  */
 
+
+#include    <stddef.h>
 #include	<stdlib.h>
 #include	<string.h>
 #include	<errno.h>
@@ -38,12 +40,27 @@
 #include	<signal.h>
 #endif
 
-#include	"dbDefs.h"
-#include	"epicsAssert.h"
-#include 	"fdmgr.h"
-#include 	"envDefs.h"
-#include 	"osiSock.h"
 #include	"epicsStdio.h"
+#include	"epicsAssert.h"
+#include 	"envDefs.h"
+#include    "cadef.h"
+#include	"dbDefs.h"
+#include 	"fdmgr.h"
+#include 	"osiSock.h"
+
+/*
+#ifdef __cplusplus
+extern "C" {
+#endif
+int ca_context_create(int);
+int ca_create_channel(char *, void *, void *, int, void *);
+int ca_array_get( long, long, void *, void *);
+int ca_pend_io( double);
+int ca_flush_io();
+#ifdef __cplusplus
+}
+#endif
+*/
 
 /*
 #include	"msgSender.h"
@@ -75,10 +92,17 @@ extern int db_insert
     int   commit_flag
     );
 
+/* globals */
 static unsigned short ioc_log_port;
 static long ioc_log_file_limit;
 static char ioc_log_file_name[256];
 static char ioc_log_file_command[256];
+static char ioc_log_program_name[10];
+static int ioc_log_throttle_seconds;
+static int ioc_log_throttle_fields;
+
+#define IOCLS_ERROR (-1)
+#define IOCLS_OK 0
 
 #define MSG_SIZE 681
 #define NAME_SIZE 32
@@ -91,14 +115,17 @@ static char ioc_log_file_command[256];
 #define PROCESS_SIZE 41
 #define THROTTLE_MSG_SIZE MSG_SIZE*3
 
-#define THROTTLE_MSG         1 << 0
-#define THROTTLE_FACILITY    1 << 1
-#define THROTTLE_SEVERITY    1 << 2
-#define THROTTLE_ERROR       1 << 3
-#define THROTTLE_HOST        1 << 4
-#define THROTTLE_USER        1 << 5
-#define THROTTLE_STATUS      1 << 6
-#define THROTTLE_PROCESS     1 << 7
+#define THROTTLE_MSG         1 << 0    /* 1 */
+#define THROTTLE_FACILITY    1 << 1    /* 2 */
+#define THROTTLE_SEVERITY    1 << 2    /* 4 */
+#define THROTTLE_ERROR       1 << 3    /* 8 */
+#define THROTTLE_HOST        1 << 4    /* 16 */
+#define THROTTLE_USER        1 << 5    /* 32 */
+#define THROTTLE_STATUS      1 << 6    /* 64 */
+#define THROTTLE_PROCESS     1 << 7    /* 128 */
+
+#define PV_THROTTLE_SECONDS 1
+#define PV_THROTTLE_FIELDS  2
 
 struct iocLogClient {
 	int insock;
@@ -117,9 +144,6 @@ struct ioc_log_server {
 	SOCKET sock;
 	long max_file_size;
 };
-
-#define IOCLS_ERROR (-1)
-#define IOCLS_OK 0
 
 static void acceptNewClient (void *pParam);
 static void readFromClient(void *pParam);
@@ -141,9 +165,15 @@ static int stripTags(int nchar, char *hostIn, char *timeIn, char *text, char *ti
                      char *system, char *host, int *errCode, char *process, char *user, int *timeDef);
 static int convertClientTime(char *timeIn, char *timeOut); 
 static int hasNextTag(char *text, char *found);
-static void getThrottlingTimestamp(char *appTimestamp, char* throttlingTimestamp, int secondsToThrottle);
-static void getThrottlingString(char *msg, char *system, char *severity, int error, char *host, char *user, int status, char *process, char *throttleString, int throttleStringMask);
+static void getThrottleTimestamp(char *appTimestamp, char* throttlingTimestamp, int throttleSeconds);
+static void getThrottleString(char *msg, char *system, char *severity, int error, char *host, char *user, int status, char *process, char *throttleString, int throttleStringMask);
+void caEventHandler(evargs args);
+void caConnectionHandler(struct connection_handler_args args);
+static int caStartChannelAccess();
+static int caStartMonitor(char *pvname, int *pvtype);
 int isNumeric (const char * s);
+static void initGlobals();
+static void printHelp();
 
 #ifdef UNIX
 static int setupSIGHUP(struct ioc_log_server *);
@@ -158,15 +188,55 @@ static int sighupPipe[2];
  *	main()
  *
  */
-int main(void)
-{
+/*int main(void) */
+int main(int argc, char* argv[]) { 
 	int msgNum = 0;
 	struct sockaddr_in serverAddr;	/* server's address */
 	struct timeval timeout;
 	int status;
 	struct ioc_log_server *pserver;
-
+	int i;
+	char buff[256];
+	char throttleSecondsPv[100];
+	char throttleFieldsPv[100];
+	int throttleSecondsPvType = PV_THROTTLE_SECONDS;
+	int throttleFieldsPvType = PV_THROTTLE_FIELDS;
 	osiSockIoctl_t	optval;
+
+	/* initialize variables */
+	initGlobals();
+	strcpy(throttleSecondsPv, "SIOC:SYS0:AL00:THROTTLE_SECONDS");
+	strcpy(throttleFieldsPv, "SIOC:SYS0:AL00:THROTTLE_FIELDS");
+
+	printf("argc=%d\n", argc);
+
+	/* parse incoming args */
+	for (i=1; i<argc; i++) {
+		printf("argv[%d]=%s\n", i, argv[i]);
+		/* get program name */
+		strcpy(buff, "program=");
+		if (strncmp(argv[i], buff, strlen(buff)) == 0) {
+			strcpy(ioc_log_program_name, argv[i]+strlen(buff));
+		}
+		/* get throttle seconds pv */
+		strcpy(buff, "throttleSecondsPv=");
+		if (strncmp(argv[i], buff, strlen(buff)) == 0) {
+			strcpy(throttleSecondsPv, argv[i]+strlen(buff));
+		}
+		/* get throttle fields pv */
+		strcpy(buff, "throttleFieldsPv=");
+		if (strncmp(argv[i], buff, strlen(buff)) == 0) {
+			strcpy(throttleFieldsPv, argv[i]+strlen(buff));
+		}
+		/* help */
+		strcpy(buff, "help");
+		if (strncmp(argv[i], buff, strlen(buff)) == 0) {
+			printHelp();
+			return IOCLS_OK;
+		}
+
+	}
+	printf("ioc_log_program_name=%s\nthrottleSecondsPv=%s\nthrottleFieldsPv=%s\n", ioc_log_program_name, throttleSecondsPv, throttleFieldsPv);
 
 	status = getConfig();
 	if(status<0){
@@ -176,7 +246,7 @@ int main(void)
 	}
 
 	pserver = (struct ioc_log_server *) 
-			calloc(1, sizeof *pserver);
+	calloc(1, sizeof *pserver);
 	if(!pserver){
 		fprintf(stderr, "iocLogServer: %s\n", strerror(errno));
 		return IOCLS_ERROR;
@@ -207,16 +277,12 @@ int main(void)
 	serverAddr.sin_port = htons(ioc_log_port);
 
 	/* get server's Internet address */
-	status = bind (	pserver->sock, 
-			(struct sockaddr *)&serverAddr, 
-			sizeof (serverAddr) );
+	status = bind (	pserver->sock, (struct sockaddr *)&serverAddr, sizeof (serverAddr) );
 	if (status<0) {
         char sockErrBuf[64];
         epicsSocketConvertErrnoToString ( sockErrBuf, sizeof ( sockErrBuf ) );
 		fprintf(stderr, "iocLogServer: bind err: %s\n", sockErrBuf );
-		fprintf (stderr,
-			"iocLogServer: a server is already installed on port %u?\n", 
-			(unsigned)ioc_log_port);
+		fprintf (stderr, "iocLogServer: a server is already installed on port %u?\n", (unsigned)ioc_log_port);
 		return IOCLS_ERROR;
 	}
 
@@ -254,10 +320,7 @@ int main(void)
 
 	status = openLogFile(pserver);
 	if (status<0) {
-		fprintf(stderr,
-			"File access problems to `%s' because `%s'\n", 
-			ioc_log_file_name,
-			strerror(errno));
+		fprintf(stderr, "File access problems to `%s' because `%s'\n", ioc_log_file_name, strerror(errno));
 		return IOCLS_ERROR;
 	}
 
@@ -267,9 +330,8 @@ int main(void)
 			fdi_read,
 			acceptNewClient,
 			pserver);
-	if(status<0){
-		fprintf(stderr,
-			"iocLogServer: failed to add read callback\n");
+	if (status<0) {
+		fprintf(stderr,	"iocLogServer: failed to add read callback\n");
 		return IOCLS_ERROR;
 	}
         
@@ -277,13 +339,12 @@ int main(void)
 	 * Initialize connection to msg_handler.
 	 */
 
-        /* JROCK Connect to Oracle */
-        if ( !db_connect("MCCODEV") )
-        {
+	/* JROCK Connect to Oracle */
+	if (!db_connect("MCCODEV")) {
         fprintf(stderr, "%s\n", "iocLogMsgServer: Error connecting to Oracle\n");
         return IOCLS_ERROR;
 	}
-        fprintf(stderr, "%s\n", "connected!");
+	fprintf(stderr, "%s\n", "connected!");
 
         /* RUN WITHOUT CONNECTION TO SPEAR MSGSENDER
         if (msgSenderInit() < 0) {
@@ -291,6 +352,15 @@ int main(void)
 		return IOCLS_ERROR;
 	}
         */
+
+	/* setup channel access pv monitoring for logserver throttle settings */
+	status = caStartChannelAccess();
+	if (status == IOCLS_OK) {
+		caStartMonitor(throttleSecondsPv, &throttleSecondsPvType);
+		caStartMonitor(throttleFieldsPv, &throttleFieldsPvType);
+	}
+	printf("ioc_log_program_name=%s\nioc_log_throttle_seconds=%d\nioc_log_throttle_fields=%d\n", ioc_log_program_name, ioc_log_throttle_seconds, ioc_log_throttle_fields);
+
 	while(TRUE) {
 		timeout.tv_sec = 60;            /*  1 min  */
 		timeout.tv_usec = 0; 
@@ -300,16 +370,35 @@ int main(void)
 	}
 
       /* disconnect from  Oracle */
-      if ( db_disconnect() )
-        {
-        fprintf(stderr, "%s\n", "iocLogMsgServer: Disconnected from Oracle\n");
+	if (db_disconnect()) {
+		fprintf(stderr, "%s\n", "iocLogMsgServer: Disconnected from Oracle\n");
 	}
+
+	/* clean up channel access */
+    ca_context_destroy();
 
         /* RUN WITHOUT CONNECTION TO MSGSENDER
         msgSenderExit();
         */
 
 	exit(0); /* should never reach here */
+}
+
+static void printHelp()
+{
+	printf("Message Logging Program\n");
+	printf("Execute with command :\n");
+	printf("  iocLogMsgServer program=<accelerator> throttleSecondsPv=<throttle seconds pv> throttleFieldsPv=<throttle fields pv>\n");
+	printf("  iocLogMsgServer program=LCLS throttleSecondsPv=SIOC:SYS0:AL00:THROTTLE_SECONDS throttleFieldsPv=SIOC:SYS0:AL00:THROTTLE_FIELDS\n");
+	printf("  Throttle fields bit mask values :\n");
+	printf("    Message=1\n");
+	printf("    Facility=2\n");
+	printf("    Severity=4\n");
+	printf("    Error=8 \n");
+	printf("    Host=16\n");
+	printf("    User=32\n");
+	printf("    Status=64\n");
+	printf("    Process=128\n\n");
 }
 
 int isNumeric (const char * s)
@@ -319,6 +408,14 @@ int isNumeric (const char * s)
     char * p;
     strtod (s, &p);
     return *p == '\0';
+}
+
+static void initGlobals()
+{
+	/* initialize globals */
+	strcpy(ioc_log_program_name, "LCLS");  /* LCLS accelerator */	
+	ioc_log_throttle_seconds = 1;          /* 1 second */
+	ioc_log_throttle_fields = 1;           /* msg field */
 }
 
 /*
@@ -501,9 +598,11 @@ static int checkLogFile(struct ioc_log_server *pserver)
 	int rc=IOCLS_OK;
 	int rrc = 0;
 
+	/* get file size */
 	fseek(pserver->poutfile, 0, SEEK_END);
 	fileSize = ftell(pserver->poutfile);
 
+	/* check if file is too big */
 	if (fileSize > pserver->max_file_size) {
 		fclose (pserver->poutfile);
 		strcpy(newname, pserver->outfile);
@@ -520,8 +619,10 @@ static int checkLogFile(struct ioc_log_server *pserver)
 			return rc;
 		}
 	}
-	/* set file pos */
+	
+	/* set file pos 
     pserver->filePos = ftell(pserver->poutfile); 
+*/
 	return rc;
 }
 
@@ -569,10 +670,10 @@ static int openLogFile(struct ioc_log_server *pserver)
 		pserver->poutfile = fopen(ioc_log_file_name, "a"); 
 		if (pserver->poutfile) {
 			checkLogFile(pserver);  /* check logfile if logfile is too big and needs to be renamed */
-		} else {
-			pserver->poutfile = fopen(ioc_log_file_name, "w");
+		} else { /* file doesn't exit */
+			pserver->poutfile = fopen(ioc_log_file_name, "w");  /* create file */
 			fclose (pserver->poutfile);
-			pserver->poutfile = fopen(ioc_log_file_name, "a"); 
+			pserver->poutfile = fopen(ioc_log_file_name, "a");  /* open for append */
 			if (!pserver->poutfile) {
 				fprintf(stderr, "ERROR opening logfile %s\n", ioc_log_file_name);
 				pserver->poutfile = stderr;
@@ -754,6 +855,10 @@ printf ("====>got from readFromClientn");
 */
 
 printf("readFromClient incoming recvbuf  %s\n\n", pclient->recvbuf);
+	
+	/* now's a good time to check log file size */
+	checkLogFile(pclient->pserver);
+
 	/* clear partial buffer in writeMessagesToLog, clearing entire buffer here inadvertently deletes last message */
 	/* try clearing pclient->recvbuf */
 /*	memset(pclient->recvbuf, '\0', sizeof(pclient->recvbuf)); */
@@ -801,17 +906,146 @@ printf ("====>writing!\n");
 	writeMessagesToLog (pclient);
 }
 
-/* getThrottlingString
+
+void caEventHandler(evargs args)
+{
+printf("caeventhandler\n");
+	int *pvtype;
+
+	if (args.status == ECA_NORMAL) {
+		printf("dbr=%i\n", *((int*)args.dbr));
+	/*	(int *)*args.usr = dbr; 
+		printf("args.user=%d\n", (int*)*args.usr);*/
+		pvtype = (int *)ca_puser(args.chid);
+		switch (*pvtype) {
+		case PV_THROTTLE_SECONDS:
+			ioc_log_throttle_seconds = *((int*)args.dbr); break;
+		case PV_THROTTLE_FIELDS:
+			ioc_log_throttle_fields = *((int*)args.dbr); break;
+		}		
+	}
+
+	printf("ioc_log_throttle_seconds=%d\nioc_log_throttle_fields=%d\n", ioc_log_throttle_seconds, ioc_log_throttle_fields);
+}
+
+void caConnectionHandler(struct connection_handler_args args)
+{
+	int rc;
+	char pvname[100];
+	int dbtype;
+	int *pvtype;
+
+	pvtype = (int *)ca_puser(args.chid);
+	switch (*pvtype) {
+	case PV_THROTTLE_SECONDS:
+		printf("PV_THROTTLE_SECONDS type\n");
+		dbtype = DBR_INT; break;
+	case PV_THROTTLE_FIELDS:
+		printf("PV_THROTTLE_FIELDS type\n");
+		dbtype = DBR_INT; break;
+	}
+
+	if (args.op == CA_OP_CONN_UP) {
+		/* start monitor */
+/*		rc = ca_create_subscription(DBR_FLOAT, 1, args.chid, DBE_VALUE, (caCh*)caEventHandler, &ioc_log_throttle_seconds, NULL); */
+		rc = ca_create_subscription(dbtype, 1, args.chid, DBE_VALUE, (caCh*)caEventHandler, &pvtype, NULL); 
+		if (rc != ECA_NORMAL) {
+			fprintf(stderr, "CA error %s occured while trying to create channel subscription.\n", ca_message(rc));
+		}
+	} else { /* connection not up, use default value */
+		fprintf(stderr, "CA connection not established.\n");
+	}
+}
+
+static int caStartChannelAccess()
+{
+	int rc = IOCLS_OK;
+
+	/* Start up Channel Access */
+	printf("ca_context_create\n");
+/*	rc = ca_context_create(ca_disable_preemptive_callback); */
+	rc = ca_context_create(ca_enable_preemptive_callback); 
+	if (rc != ECA_NORMAL) {
+		fprintf(stderr, "CA error %s occurred while trying to start channel access.\n", ca_message(rc));
+		return IOCLS_ERROR;
+    } else {
+		rc = IOCLS_OK;
+	}
+	fprintf(stderr, "CA rc %s occurred while trying to start channel access.\n", ca_message(rc));
+	
+	return rc;
+}
+
+/* setupPVMonitors 
+// Setup channel access pv monitors for throttle settings
+*/
+static int caStartMonitor(char *pvname, int *pvtype)
+{
+	int rc;
+	chid chidThrottleSeconds;
+	int priority=50;
+	int timeout=1;
+	int value;
+	chid chid;
+
+printf("ca_create_channel\n");
+	/* Connect channels */
+	/* Create CA connections */
+/*	rc = ca_create_channel("SIOC:SYS0:AL00:THROTTLE_SECONDS", (caCh*)caConnectionHandler, &ioc_log_throttle_seconds, priority, &chidThrottleSeconds);  
+	rc = ca_create_channel(pvname, (caCh*)caConnectionHandler, 0, priority, &chidThrottleSeconds); 
+/*	rc = ca_create_channel(pvname, 0, 0, priority, &chidThrottleSeconds); 
+*/
+	rc = ca_create_channel(pvname, (caCh*)caConnectionHandler, pvtype, priority, &chid); 
+	if (rc != ECA_NORMAL) {
+		fprintf(stderr, "CA error %s occurred while trying to create channel '%s'.\n", ca_message(rc), pvname);
+		return IOCLS_ERROR;
+	}
+		fprintf(stderr, "CA rc %s occurred while trying to create channel '%s'.\n", ca_message(rc), pvname);
+/*
+	rc = ca_array_get(DBR_FLOAT, 1, chidThrottleSeconds, value);
+
+printf("ca_pend_io\n");
+	ca_pend_io(timeout);
+*/
+/*
+	rc = ca_pend_io(timeout);
+	if (rc == ECA_TIMEOUT) {
+		fprintf(stderr, "Channel connect timeout. Some PV's not connected\n");
+	}
+		fprintf(stderr, "CA rc %s occurred while pending io '%s'.\n", ca_message(rc), pvname);
+*/
+
+
+printf("ca_pend_event\n");
+	/* Check for channels that didn't connect */
+    ca_pend_event(timeout);
+
+/*    for (n = 0; n < nPvs; n++)
+    {
+        if (!pvs[n].onceConnected)
+            print_time_val_sts(&pvs[n], pvs[n].reqElems);
+    }
+
+                                /* Read and print data forever 
+    ca_pend_event(0); 
+
+                                /* Shut down Channel Access 
+    ca_context_destroy(); 
+*/
+}
+
+
+/* getThrottleString
 // Concatenates valid columns to create string for database to use as constraint
 */
-static void getThrottlingString(char *msg, char *facility, char *severity, int error, char *host, char *user, int status, char *process, char *throttleString, int throttleStringMask)
+static void getThrottleString(char *msg, char *facility, char *severity, int error, char *host, char *user, int status, char *process, char *throttleString, int throttleStringMask)
 {
-	printf("throttle mask:\n msg=%d\n facility=%d\n severity=%d\n error=%d\n host=%d\n user=%d\n status=%d\n process=%d\n", 
+/*	printf("throttle mask:\n msg=%d\n facility=%d\n severity=%d\n error=%d\n host=%d\n user=%d\n status=%d\n process=%d\n", 
 			THROTTLE_MSG, THROTTLE_FACILITY, THROTTLE_SEVERITY, THROTTLE_ERROR, THROTTLE_HOST, THROTTLE_USER, THROTTLE_STATUS, THROTTLE_PROCESS);
+*/
 	char buff[256];
 
 	memset(throttleString, '\0', THROTTLE_MSG_SIZE);
-
 
 	if (throttleStringMask & THROTTLE_MSG) { strcpy(throttleString, msg); printf("-msg"); }
 	if (throttleStringMask & THROTTLE_FACILITY) { strcat(throttleString, facility); printf("-facility"); }
@@ -819,7 +1053,7 @@ static void getThrottlingString(char *msg, char *facility, char *severity, int e
 	if (throttleStringMask & THROTTLE_ERROR) { 
 		sprintf(buff, "%d", error);
 		strcat(throttleString, buff); 
-		printf("-rror");
+		printf("Error");
 	}
 	if (throttleStringMask & THROTTLE_HOST) { strcat(throttleString, host); printf("-host"); }
 	if (throttleStringMask & THROTTLE_USER) { strcat(throttleString, user); printf("-user"); }
@@ -829,17 +1063,18 @@ static void getThrottlingString(char *msg, char *facility, char *severity, int e
 		printf("-status");
 	}
 	if (throttleStringMask & THROTTLE_PROCESS) { strcat(throttleString, process); printf("-process"); }
+	printf("\n");
 
-	printf(" throttleMask=%d\n throttleString=%s\n", throttleStringMask, throttleString);
+	printf(" throttleMask=%d\n throttleString='%s'\n", throttleStringMask, throttleString);
 }
 
 
-/* getThrottlingTimestamp
-// Truncates second field of app timestamp based on secondsToThrottle
+/* getThrottleTimestamp
+// Truncates second field of app timestamp based on throttleSeconds
 // Currently ONLY TRUNCATES up to 1 day, resets at 00:00:00
 // AppTimestamp format should be 14-Feb-2012 10:10:38.00
 */
-static void getThrottlingTimestamp(char *appTimestamp, char* throttlingTimestamp, int secondsToThrottle)
+static void getThrottleTimestamp(char *appTimestamp, char* throttlingTimestamp, int throttleSeconds)
 {
 	char *pch;
 	int seconds=0;
@@ -849,7 +1084,7 @@ static void getThrottlingTimestamp(char *appTimestamp, char* throttlingTimestamp
 	int remainder=0;
 
 
-	printf("getThrottlingTimestamp appTimestamp=%s\n", appTimestamp);
+	printf("getThrottleTimestamp appTimestamp=%s\n", appTimestamp);
 	/* assume timestamp in format 14-Feb-2012 10:10:38.00 */
 	pch = strchr(appTimestamp, ' ');
 	pch = pch+1;
@@ -863,11 +1098,12 @@ static void getThrottlingTimestamp(char *appTimestamp, char* throttlingTimestamp
 	/* printf("pch=%s\n", pch); */
 	seconds = atoi(pch) + (hour*60 + minutes)*60;
 
-	remainder = seconds%secondsToThrottle;
+	/* calculate throttled/rounded seconds from start of day */
+	remainder = seconds % throttleSeconds;
 	throttlingSeconds = seconds - remainder;
-	printf(" seconds=%d, minutes=%d, hour=%d secondsToThrottle=%d, remainder=%d, throttlingSeconds=%d\n", seconds, minutes, hour, secondsToThrottle, remainder, throttlingSeconds);
+	printf(" seconds=%d, minutes=%d, hour=%d throttleSeconds=%d, remainder=%d, throttlingSeconds=%d\n", seconds, minutes, hour, throttleSeconds, remainder, throttlingSeconds);
 
-	/* now build up timestamp */
+	/* now build up throttle timestamp */
 	struct tm time;
 	char timestr[80];
 	/* convert string time to time struct */
@@ -882,6 +1118,7 @@ static void getThrottlingTimestamp(char *appTimestamp, char* throttlingTimestamp
 
 /*
  * writeMessagesToLog()
+ * sends data to database
  */
 static void writeMessagesToLog (struct iocLogClient *pclient)
 {
@@ -911,11 +1148,12 @@ static void writeMessagesToLog (struct iocLogClient *pclient)
 	int appTimeDef = 0;
 	int msgCount=1;
 	int commit=1;
-	int throttlingSeconds=7;
+/*	int throttleSeconds=7; */
 	char throttleString[THROTTLE_MSG_SIZE];
-	int throttleStringMask;
+/*	int throttleStringMask; */
+	char onerow[THROTTLE_MSG_SIZE];
 
-	throttleStringMask = THROTTLE_FACILITY | THROTTLE_ERROR | THROTTLE_HOST;
+/*	throttleStringMask = THROTTLE_FACILITY | THROTTLE_ERROR | THROTTLE_HOST; */
 
 	while (TRUE) {
 
@@ -940,12 +1178,12 @@ static void writeMessagesToLog (struct iocLogClient *pclient)
 			nchar = crIndex - lineIndex;
 		} else {
 			nchar = pclient->nChar - lineIndex;
-			if ( nchar < sizeof ( pclient->recvbuf ) ) {
+			if ( nchar < sizeof ( pclient->recvbuf ) ) {  /* entry is incomplete, delete preceeding characters and move incomplete message to beginning */
 				if ( lineIndex != 0 ) {
 					pclient->nChar = nchar;
-					memmove(pclient->recvbuf, & pclient->recvbuf[lineIndex], nchar);
+					memmove(pclient->recvbuf, & pclient->recvbuf[lineIndex], nchar);  /* move incomplete entry to beginning */
 					memset(&pclient->recvbuf[lineIndex+1], '\0', sizeof(pclient->recvbuf) - (lineIndex+1)); /* clear rest of buffer */
-					lineIndex=0;
+					lineIndex=0;  /* reset index to head */
 				}
 				break;
 			}
@@ -1025,11 +1263,11 @@ printf("%s\n", "===================================");
 		msg2write[(int) nchar-ncharStripped] = 0;
 
 		/* format throttling timestamp */
-		getThrottlingTimestamp(appTime, throttleTime, throttlingSeconds);
+		getThrottleTimestamp(appTime, throttleTime, ioc_log_throttle_seconds);
 
-	printf("throttleStringMask incoming=%d\n", throttleStringMask);
+		printf("throttleStringField =%d\n", ioc_log_throttle_fields);
 		/* format throttling string */
-		getThrottlingString(msg2write, system, msgSeverity, errCode, host, user, status, process, throttleString, throttleStringMask);
+		getThrottleString(msg2write, system, msgSeverity, errCode, host, user, status, process, throttleString, ioc_log_throttle_fields);
 /*
 		printf ("inserting *%s* *%s* *%s* *%s*\n",system, host, msg2write, msgSeverity); 
 		printf("pclient time is %s\n", pclient->ascii_time);
@@ -1039,22 +1277,29 @@ printf("%s\n", "===================================");
 		convertClientTime(pclient->ascii_time, pclientTime);
 
 */
+		printf("ioc_log_program_name=%s\n", ioc_log_program_name);
 		rc = db_insert(0, logServer_id, system, msgSeverity, msg2write, pclient->ascii_time, appTime, throttleTime, appTimeDef,
 		               errCode, host, user, status, process, msgCount, commit); 
 		
-
 		if (rc == 1) {
 			/* printf("%s\n", "SUCCESSFUL INSERT INTO ERRLOG TABLE"); */
 			printf("%s %s %s\n", system,host,"msg2Oracle");
+			memset(onerow, '\0', THROTTLE_MSG_SIZE);
+			strncpy(onerow, &pclient->recvbuf[lineIndex], nchar);
+			printf("onerow : '%s'\n", onerow);
 		} else {
 			printf("%s for message:  %s %s %s\n", "ERROR INSERTING INTO ERRLOG TABLE", system, host, msg2write);
+			/* TODO: save entire message to data file for future processing */
+			memset(onerow, '\0', THROTTLE_MSG_SIZE);
+			strncpy(onerow, &pclient->recvbuf[lineIndex], nchar);
+			printf("onerow : '%s'\n", onerow);
 		}
 
 		if (pclient->pserver->poutfile) {
 		/* NOTE: !! change format string here then must change nTotChar calc above !! 
 			rc = fprintf(pclient->pserver->poutfile, "%s %s %.*s\n", pclient->name,	pclient->ascii_time, (int) nchar-ncharStripped,	&pclient->recvbuf[lineIndex]+ncharStripped);
 */
-			rc = fprintf(pclient->pserver->poutfile, "%s %s %s\n", pclient->name,	pclient->ascii_time, msg2write);
+			rc = fprintf(pclient->pserver->poutfile, "%s %s %s\n", pclient->name, pclient->ascii_time, msg2write);
 			/* do we need this check?? */
 			if (rc < 0) {
 				handleLogFileError();
@@ -1065,6 +1310,8 @@ printf("%s\n", "===================================");
 		    	pclient->pserver->filePos += rc;
 			}
 		}
+
+		/* update msg buffer pointer */
 		lineIndex += nchar+1u;
 	
 		printf("----------------------------------\n");
@@ -1233,11 +1480,11 @@ static int stripTags(int nchar, char *hostIn, char *timeIn, char *text, char *ti
 				/* make sure this is a tag and not a "=" within the message text */
 				rc = hasNextTag(nextTagPtr, tmpPtr);					
 				if (rc == 0) { /* no next tag, the "=" is within the message text */
-					lastPtr= strchr(tagPtr, ' ');
+					lastPtr= strchr(tagPtr, ' '); /* look for space between this tag value and the message text */
 				} else { /* this is a tag */
 					tmpPtr = strchr(tagPtr, ' '); /* look for space, assume there will be at least one more space */
-					while (tmpPtr < nextTagPtr) {
-						tmpPtr = strchr(tmpPtr, ' '); /* look for space */
+					while (tmpPtr < nextTagPtr) { 
+						tmpPtr = strchr(tmpPtr, ' '); /* look for last space before next tag */
 						if (tmpPtr < nextTagPtr) lastPtr = tmpPtr;
 						if (tmpPtr) tmpPtr += 1;
 					}
@@ -1295,7 +1542,6 @@ reconcile with fwdClis, etc.
 	/* now clean up data and handle defaults */
 	/* no host defined, set default */
 	if (strlen(host) == 0) { 	
-/*   strncpy(host, hostIn, NAME_SIZE); */
 		strncpy(host, hostIn, HOSTNODE_SIZE);
 		host[NAME_SIZE-1]=0;
 		/* Remove IP domain name */
@@ -1322,20 +1568,7 @@ reconcile with fwdClis, etc.
 	/* atoi should return 0 if not numeric or first part of numeric string if alphanumeric string */
 	*status = atoi(msgStatus);
 	*errCode = atoi(msgErrCode);
-/*
-	if (isdigit(msgStatus[0])) {
-			printf("msgStatus is numeric! msgStatus=%s\n", msgStatus);
-			*status = atoi(msgStatus);
-	} else {
-		printf("msgStatus is NOT numeric! msgStatus=%s\n", msgStatus);
-	}
-	if (isdigit(msgErrCode[0])) {
-		printf("msgErrCode is numeric! msgErrCode=%s\n", msgErrCode);
-		*errCode = atoi(msgErrCode);
-	} else {
-		printf("msgErrCode is NOT numeric! msgErrCode=%s\n", msgErrCode);
-	}
-*/	
+
 	return ncharStripped;
 }
 
@@ -1453,6 +1686,7 @@ static int getConfig(void)
 			sizeof ioc_log_file_command,
 			ioc_log_file_command);
 	return IOCLS_OK;
+
 }
 
 
@@ -1478,8 +1712,7 @@ static int setupSIGHUP(struct ioc_log_server *pserver)
 
 	status = getDirectory();
 	if (status<0){
-		fprintf(stderr, "iocLogServer: failed to determine log file "
-			"directory\n");
+		fprintf(stderr, "iocLogServer: failed to determine log file directory\n");
 		return IOCLS_ERROR;
 	}
 
@@ -1496,12 +1729,10 @@ static int setupSIGHUP(struct ioc_log_server *pserver)
 	}
 	
 	status = pipe(sighupPipe);
-	if(status<0){
-                fprintf(stderr,
-                        "iocLogServer: failed to create pipe because `%s'\n",
-                        strerror(errno));
-                return IOCLS_ERROR;
-        }
+	if(status<0) {
+		fprintf(stderr, "iocLogServer: failed to create pipe because `%s'\n", strerror(errno));
+		return IOCLS_ERROR;
+	}
 
 	status = fdmgr_add_callback(
 			pserver->pfdctx, 
@@ -1509,9 +1740,8 @@ static int setupSIGHUP(struct ioc_log_server *pserver)
 			fdi_read,
 			serviceSighupRequest,
 			pserver);
-	if(status<0){
-		fprintf(stderr,
-			"iocLogServer: failed to add SIGHUP callback\n");
+	if (status<0) {
+		fprintf(stderr,	"iocLogServer: failed to add SIGHUP callback\n");
 		return IOCLS_ERROR;
 	}
 	return IOCLS_OK;
@@ -1529,7 +1759,6 @@ static void sighupHandler(int signo)
 }
 
 
-
 /*
  *	serviceSighupRequest()
  *
@@ -1549,49 +1778,34 @@ static void serviceSighupRequest(void *pParam)
 	 * Determine new log file name.
 	 */
 	status = getDirectory();
-	if (status<0){
-		fprintf(stderr, "iocLogServer: failed to determine new log "
-			"file name\n");
+	if (status<0) {
+		fprintf(stderr, "iocLogServer: failed to determine new log file name\n");
 		return;
 	}
 
 	/*
-	 * If it's changed, open the new file.
-	 */
-      if (strlen(ioc_log_file_name)) {
-	if (strcmp(ioc_log_file_name, pserver->outfile) == 0) {
-		fprintf(stderr,
-			"iocLogServer: log file name unchanged; not re-opened\n");
-	}
-	else {
-		status = openLogFile(pserver);
-		if(status<0){
-			fprintf(stderr,
-				"File access problems to `%s' because `%s'\n", 
-				ioc_log_file_name,
-				strerror(errno));
-			strcpy(ioc_log_file_name, pserver->outfile);
+	* If it's changed, open the new file.
+	*/
+	if (strlen(ioc_log_file_name)) {
+		if (strcmp(ioc_log_file_name, pserver->outfile) == 0) {
+			fprintf(stderr,	"iocLogServer: log file name unchanged; not re-opened\n");
+		} else {
 			status = openLogFile(pserver);
-			if(status<0){
-				fprintf(stderr,
-                                "File access problems to `%s' because `%s'\n",
-                                ioc_log_file_name,
-                                strerror(errno));
-				return;
+			if (status<0) {
+				fprintf(stderr, "File access problems to `%s' because `%s'\n", ioc_log_file_name, strerror(errno));
+				strcpy(ioc_log_file_name, pserver->outfile);
+				status = openLogFile(pserver);
+				if (status<0) {
+					fprintf(stderr, "File access problems to `%s' because `%s'\n", ioc_log_file_name, strerror(errno));
+					return;
+				} else {
+					fprintf(stderr, "iocLogServer: re-opened old log file %s\n", ioc_log_file_name);
+				}
+			} else {
+				fprintf(stderr,	"iocLogServer: opened new log file %s\n", ioc_log_file_name);
 			}
-			else {
-				fprintf(stderr,
-				"iocLogServer: re-opened old log file %s\n",
-				ioc_log_file_name);
-			}
-		}
-		else {
-			fprintf(stderr,
-				"iocLogServer: opened new log file %s\n",
-				ioc_log_file_name);
 		}
 	}
-      }
 }
 
 
@@ -1607,25 +1821,17 @@ static int getDirectory(void)
 	char		dir[256];
 	int		i;
 
-	if ((ioc_log_file_command[0] != '\0') &&
-            (ioc_log_file_name[0]    != '\0')) {
-
+	if ((ioc_log_file_command[0] != '\0') && (ioc_log_file_name[0] != '\0')) {
 		/*
 		 * Use popen() to execute command and grab output.
 		 */
 		pipe = popen(ioc_log_file_command, "r");
 		if (pipe == NULL) {
-			fprintf(stderr,
-				"Problem executing `%s' because `%s'\n", 
-				ioc_log_file_command,
-				strerror(errno));
+			fprintf(stderr, "Problem executing `%s' because `%s'\n", ioc_log_file_command, strerror(errno));
 			return IOCLS_ERROR;
 		}
 		if (fgets(dir, sizeof(dir), pipe) == NULL) {
-			fprintf(stderr,
-				"Problem reading o/p from `%s' because `%s'\n", 
-				ioc_log_file_command,
-				strerror(errno));
+			fprintf(stderr, "Problem reading o/p from `%s' because `%s'\n", ioc_log_file_command, strerror(errno));
 			return IOCLS_ERROR;
 		}
 		(void) pclose(pipe);
