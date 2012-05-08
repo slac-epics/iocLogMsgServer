@@ -99,7 +99,8 @@ int db_connect(server)
 
     EXEC SQL END DECLARE SECTION;
 
-	strcpy(userid, "ERRLOG_OWNER/DE2B_USSY@");
+/*	strcpy(userid, "ERRLOG_OWNER/DE2B_USSY@");*/
+	strcpy(userid, "message_logger/asorry17cents:@");
     strcat(userid, server);
 
     EXEC SQL WHENEVER SQLERROR DO sql_error("CONNECT ERROR");
@@ -133,8 +134,8 @@ int db_commit()
 
 /* ------------------------------------------------------------ */
 
-int db_insert(errlog_id,
-              logserver_id,
+int db_insert(msglog_id,
+              program_name,
               facility_name,
               severity,
               msg,
@@ -142,35 +143,41 @@ int db_insert(errlog_id,
               app_ascii_time,
               throttle_ascii_time,	
               app_timestamp_def,
-              err_code,
+              msg_code,
               hostnode,
               user_name,
               status,
               process_name,
               msg_count,
+              throttle_parameter,
               commit_flag)
 
   EXEC SQL BEGIN DECLARE SECTION;
-    int  errlog_id;
-    int  logserver_id;
+    int  msglog_id;
+/*    int  logserver_id; */
+	char program_name[11];
     char facility_name[41];
     char severity[21]; 
     char msg[681];
-    char logServer_ascii_time[32];
-    char app_ascii_time[32];
-    char throttle_ascii_time[32];
-    int  app_timestamp_def;
-    int  err_code;
-    char  hostnode[41];
-    char  user_name[41];
-    int  status;
-    char  process_name[41];
-    long  msg_count;
-    int   commit_flag;
+    char logServer_ascii_time[31];
+    char app_ascii_time[31];
+    char throttle_ascii_time[31];
+    int app_timestamp_def;
+/*    int  err_code; */
+	char msg_code[257];
+    char hostnode[41];
+    char user_name[41];
+/*    int  status; */
+	char status[21];
+    char process_name[41];
+    long msg_count;
+    char throttle_parameter[2001];
+    int commit_flag;
   EXEC SQL END DECLARE SECTION;
 
-  EXEC SQL VAR  errlog_id IS INTEGER;
-  EXEC SQL VAR  logserver_id IS INTEGER;
+  EXEC SQL VAR  msglog_id IS INTEGER;
+/*  EXEC SQL VAR  logserver_id IS INTEGER; */
+  EXEC SQL VAR program_name IS STRING(11); 
   EXEC SQL VAR facility_name IS STRING(41);
   EXEC SQL VAR severity IS STRING(21);
   EXEC SQL VAR msg IS STRING(681);
@@ -178,13 +185,15 @@ int db_insert(errlog_id,
   EXEC SQL VAR app_ascii_time IS STRING(32);
   EXEC SQL VAR throttle_ascii_time IS STRING(32);
   EXEC SQL VAR app_timestamp_def IS INTEGER;
-  EXEC SQL VAR err_code IS INTEGER;
+/*  EXEC SQL VAR err_code IS INTEGER; */
+  EXEC SQL VAR msg_code IS STRING(257);
   EXEC SQL VAR hostnode IS STRING(41);
   EXEC SQL VAR user_name IS STRING(41);
-  EXEC SQL VAR status IS INTEGER;
+/*  EXEC SQL VAR status IS INTEGER; */
+  EXEC SQL VAR status IS STRING(21); 
   EXEC SQL VAR process_name IS STRING(41);
   EXEC SQL VAR msg_count IS INTEGER;
-
+  EXEC SQL VAR throttle_parameter IS STRING(2001);
 {
     
     int curr_status = 0;
@@ -206,7 +215,7 @@ int db_insert(errlog_id,
 
 /* default app_time and orig_time - altho this may slow things down 
 */
-printf ("logServer_ascii_time: %s app_ascii_time: %s\n", logServer_ascii_time, app_ascii_time);
+printf ("logServer_ascii_time: %s app_ascii_time: %s\n", logServer_ascii_time, app_ascii_time); 
 
 /* will need this, but for now use the sequence 
     EXEC SQL INSERT INTO errlog (errlog_id,
@@ -214,38 +223,42 @@ printf ("logServer_ascii_time: %s app_ascii_time: %s\n", logServer_ascii_time, a
 
 /* TESTING THE ERROR REPORTING! */
 
-    EXEC SQL INSERT INTO errlog (logserver_id,
+    EXEC SQL INSERT INTO message_log (program_name,
                                  facility_name,
                                  severity,
                                  msg,
                                  logServer_timestamp,
                                  app_timestamp,
-                                 app_timestamp_upto_secs, 
+                                 throttle_timestamp, 
                                  app_timestamp_def,
-                                 err_code,
+                                 msg_code,
                                  hostnode,
                                  user_name,
                                  status,
                                  process_name,
-                                 msg_count
+                                 msg_count,
+                                 throttle_parameter
                                     )
-                         VALUES (:logserver_id,
+                         VALUES (:program_name,
                                  :facility_name,
                                  :severity,
                                  :msg,
-                                 to_timestamp(:logServer_ascii_time, 'DY MON DD HH24:MI:SS.FF YYYY'),
+/*                                 to_timestamp(:logServer_ascii_time, 'DY MON DD HH24:MI:SS.FF YYYY'), */
+                                 to_timestamp(:logServer_ascii_time, 'DD-MON-YYYY HH24:MI:SS.FF'), 
                                  to_timestamp(:app_ascii_time, 'DD-MON-YYYY HH24:MI:SS.FF'),
                                  to_timestamp(:throttle_ascii_time, 'DD-MON-YYYY HH24:MI:SS.FF'), 
                                  :app_timestamp_def,
-                                 :err_code,
+                                 :msg_code,
                                  :hostnode,
                                  :user_name,
                                  :status,
                                  :process_name,
-                                 :msg_count
-                                )
-                LOG ERRORS INTO ERRLOG_ERRORS
+                                 :msg_count,
+                                 :throttle_parameter
+                                );
+/*                LOG ERRORS INTO MESSAGE_LOG_ERRORS
               REJECT LIMIT UNLIMITED;
+*/
 
 
     if ( commit_flag )
