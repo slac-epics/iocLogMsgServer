@@ -28,6 +28,7 @@ msg2Oracle_CFLAGS += -L/afs/slac/package/oracle/d/linux/11.1.0/lib
 
 iocLogMsgServer_SRCS = iocLogMsgServer.c
 iocLogMsgServer_SRCS += msg2Oracle.c
+iocLogMsgServer_SRCS += MessageLoggerTest.cpp
 
 #iocLogMsgServer_SRCS += msgSender.c
 
