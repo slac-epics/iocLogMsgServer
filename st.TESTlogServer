@@ -28,16 +28,22 @@ export PATH=/afs/slac/g/lcls/epics/extensions/MAIN_TRUNK-nia/bin/linux-x86:$PATH
 export LD_LIBRARY_PATH=/afs/slac/package/oracle/d/linux/11.1.0/lib:$LD_LIBRARY_PATH
 ###################################################################
 
-printenv | grep LD_LIBRARY_PATH
-printenv | grep EPICS
-which iocLogMsgServer
+#printenv | grep EPICS
+#which iocLogMsgServer
 
 # To change the default values for the EPICS Environment parameters,
 # uncomment and modify the relevant lines below.
 # the log port is defaulted to 7004 in $EPICS_BASE/config/CONFIG_ENV
 export EPICS_IOC_LOG_PORT="7004"
 export EPICS_IOC_LOG_FILE_NAME="/nfs/slac/g/lcls/cmlog/iocLogServerTest/iocLogServer.log"
-export EPICS_IOC_LOG_FILE_LIMIT="10000000"
+export EPICS_IOC_LOG_FILE_LIMIT="1000000"
+#export EPICS_IOC_LOG_FILE_LIMIT="10000000"
+
+# use lcls-dev2 channel access environment for testing pv monitoring
+export EPICS_CA_ADDR_LIST="134.79.219.12"
+export EPICS_CA_SERVER_PORT="5066"
+
+printenv | grep EPICS
 
 export TWO_TASK=MCCODEV
 
@@ -46,11 +52,6 @@ echo "Starting the PROTOTYPE EPICS Log MSG Server "
 # STARTING THE STABLE PROTOTYPE VERSION
 # THE ONE UNDER DEVELOPMENT, iocLogMsgServer, MAY OR MAY NOT WORK
 #gdb iocLogMsgServer-WORKING-PROTOTYPE
-gdb iocLogMsgServer
-#iocLogMsgServer
-##########################################################
-# point to test version of iocLogServer
-# THIS IS FOR RUNNING iocLogServer TEST IN BASE ENVIRONMENT
-#$EPICS_BASE_RELEASE/bin/linux-x86/iocLogServer
-##########################################################
+gdb iocLogMsgServer # run program=FACET
+#iocLogMsgServer program=LCLS throttleSecondsPv=SIOC:SYS0:AL00:THROTTLE_SECONDS throttleFieldsPv=SIOC:SYS0:AL00:THROTTLE_FIELDS
 
