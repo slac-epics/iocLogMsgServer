@@ -255,17 +255,15 @@ printf ("logServer_ascii_time: %s app_ascii_time: %s\n", logServer_ascii_time, a
                                  :process_name,
                                  :msg_count,
                                  :throttle_parameter
-                                );
-/*                LOG ERRORS INTO MESSAGE_LOG_ERRORS
+                                )
+                LOG ERRORS INTO MESSAGE_LOG_ERRORS
               REJECT LIMIT UNLIMITED;
-*/
-
-
+/*
     if ( commit_flag )
     {
       EXEC SQL COMMIT WORK;
     }
-
+*/
     EXEC SQL WHENEVER SQLERROR CONTINUE;
 
     curr_status = g_status;
