@@ -139,7 +139,8 @@ struct iocLogClient {
 	size_t nChar;
 	char recvbuf[1024];
 	char name[NAME_SIZE];
-	char ascii_time[NAME_SIZE];
+/*	char ascii_time[NAME_SIZE]; */
+	char ascii_time[ASCII_TIME_SIZE];
 };
 
 struct ioc_log_server {
@@ -151,32 +152,23 @@ struct ioc_log_server {
 	long max_file_size;
 };
 
-static void acceptNewClient (void *pParam);
-static void readFromClient(void *pParam);
-/*static void logTime (struct iocLogClient *pclient); */
-/* static void getTimestamp (char *timestamp); */
-static char *getTimestamp();
-static int getConfig(void);
-static int openLogFileOld(struct ioc_log_server *pserver);
-static int openLogFile(struct ioc_log_server *pserver);
-static void handleLogFileError(void);
-static void envFailureNotify(const ENV_PARAM *pparam);
-static void freeLogClient(struct iocLogClient *pclient);
-static void writeMessagesToLogOld(struct iocLogClient *pclient);
-static void parseMessages(struct iocLogClient *pclient);
-/*static int stripTags(int nchar, char *hostIn, char *timeIn, char *text,
-                     char *timeOut,
-                     char *msgStatus, char *msgSeverity,
-                     char *system,    char *host, 
-                     char *msgErrCode, char *process, char *user, int *timeDef);
-*/
+
+/* ORACLE TEST FUNCTIONS */
 extern void parseMessagesTest(const char *directory);
 extern void sendMessagesTest(int nrows);
+
+
+static void acceptNewClient (void *pParam);
+static void readFromClient(void *pParam);
+static void getTimestamp (char *timestamp);
+/*static char *getTimestamp(); */
+static int getConfig(void);
+static int openLogFile(struct ioc_log_server *pserver);
+static void envFailureNotify(const ENV_PARAM *pparam);
+static void freeLogClient(struct iocLogClient *pclient);
+static void parseMessages(struct iocLogClient *pclient);
 static int parseTags(int nchar, char *hostIn, char *timeIn, char *text, char *timeApp,  char *status, char *severity, 
                      char *facility, char *host, char *code, char *process, char *user, int *timeDef);
-static int stripTags(int nchar, char *hostIn, char *timeIn, char *text, char *timeApp, char *msgStatus, char *msgSeverity, 
-                     char *facility, char *host, char *msgCode, char *process, char *user, int *timeDef);
-static int convertClientTime(char *timeIn, char *timeOut); 
 static int hasNextTag(char *text, char *found);
 static void getThrottleTimestamp(char *appTimestamp, char* throttleTimestamp, int throttleSeconds);
 static void getThrottleString(char *msg, char *system, char *severity, char *code, char *host, char *user, char *status, char *process, char *throttleString, int throttleStringMask);
@@ -203,7 +195,6 @@ static int sighupPipe[2];
  */
 /*int main(void) */
 int main(int argc, char* argv[]) { 
-	int msgNum = 0;
 	struct sockaddr_in serverAddr;	/* server's address */
 	struct timeval timeout;
 	int status;
@@ -372,7 +363,7 @@ printf("Sending %d messages\n", ntestrows);
 		fprintf(stderr, "File access problems to `%s' because `%s'\n", ioc_log_fileName, strerror(errno));
 		return IOCLS_ERROR;
 	}
-	strcpy(timestamp, getTimestamp());
+	getTimestamp(timestamp);
 	fprintf(pserver->poutfile, "%s: ioc_log_programName=%s, throttleSecondsPv=%s, throttleFieldsPv=%s\n", timestamp, ioc_log_programName, throttleSecondsPv, throttleFieldsPv);
 
 	status = fdmgr_add_callback(
@@ -410,7 +401,8 @@ printf("Sending %d messages\n", ntestrows);
 		caStartMonitor(throttleSecondsPv, &ioc_log_caThrottleSecondsPvType);
 		caStartMonitor(throttleFieldsPv, &ioc_log_caThrottleFieldsPvType);
 	}
-	printf("Started PV Monitoring\nioc_log_programName=%s\nioc_log_throttleSeconds=%d\nioc_log_throttleFields=%d\n", ioc_log_programName, ioc_log_throttleSeconds, ioc_log_throttleFields);
+	printf("PV Monitoring:\nioc_log_programName=%s\nioc_log_throttleSeconds=%d\nioc_log_throttleFields=%d\n", ioc_log_programName, ioc_log_throttleSeconds, ioc_log_throttleFields);
+	fprintf(ioc_log_plogfile, "PV Monitoring:	 ioc_log_programName=%s, ioc_log_throttleSeconds=%d, ioc_log_throttleFields=%d\n", ioc_log_programName, ioc_log_throttleSeconds, ioc_log_throttleFields);
 
 	while(TRUE) {
 		timeout.tv_sec = 60;            /*  1 min  */
@@ -471,176 +463,6 @@ static void initGlobals()
 	strcpy(ioc_log_testDirectory, "");
 }
 
-/*
- * seekLatestLine (struct ioc_log_server *pserver)
- */
-static int seekLatestLine (struct ioc_log_server *pserver)
-{
-    static const time_t invalidTime = (time_t) -1;
-    time_t theLatestTime = invalidTime;
-    long latestFilePos = -1;
-    int status;
-
-    /*
-     * start at the beginning
-     */
-    rewind (pserver->poutfile);
-
-    while (1) {
-        struct tm theDate;
-        int convertStatus;
-        char month[16];
-
-        /*
-         * find the line in the file with the latest date
-         *
-         * this assumes ctime() produces dates of the form:
-         * DayName MonthName dayNum 24hourHourNum:minNum:secNum yearNum
-         */
-        convertStatus = fscanf (
-            pserver->poutfile, " %*s %*s %15s %d %d:%d:%d %d %*[^\n] ",
-            month, &theDate.tm_mday, &theDate.tm_hour, 
-            &theDate.tm_min, &theDate.tm_sec, &theDate.tm_year);
-        if (convertStatus==6) {
-            static const char *pMonths[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
-            static const unsigned nMonths = sizeof(pMonths)/sizeof(pMonths[0]);
-            time_t lineTime = (time_t) -1;
-            unsigned iMonth;
-
-            for (iMonth=0; iMonth<nMonths; iMonth++) {
-                if ( strcmp (pMonths[iMonth], month)==0 ) {
-                    theDate.tm_mon = iMonth;
-                    break;
-                }
-            }
-            if (iMonth<nMonths) {
-                static const int tm_epoch_year = 1900;
-                if (theDate.tm_year>tm_epoch_year) {
-                    theDate.tm_year -= tm_epoch_year;
-                    theDate.tm_isdst = -1; /* dont know */
-                    lineTime = mktime (&theDate);
-                    if ( lineTime != invalidTime ) {
-                        if (theLatestTime == invalidTime || 
-                            difftime(lineTime, theLatestTime)>=0) {
-                            latestFilePos =  ftell (pserver->poutfile);
-                            theLatestTime = lineTime;
-                        }
-                    }
-                    else {
-                        char date[128];
-                        size_t nChar;
-                        nChar = strftime (date, sizeof(date), "%a %b %d %H:%M:%S %Y\n", &theDate);
-                        if (nChar>0) {
-                            fprintf (stderr, "iocLogServer: strange date in log file: %s\n", date);
-                        }
-                        else {
-                            fprintf (stderr, "iocLogServer: strange date in log file\n");
-                        }
-                    }
-                }
-                else {
-                    fprintf (stderr, "iocLogServer: strange year in log file: %d\n", theDate.tm_year);
-                }
-            }
-            else {
-                fprintf (stderr, "iocLogServer: strange month in log file: %s\n", month);
-            }
-        }
-        else {
-            char c = fgetc (pserver->poutfile);
- 
-            /*
-             * bypass the line if it does not match the expected format
-             */
-            while ( c!=EOF && c!='\n' ) {
-                c = fgetc (pserver->poutfile);
-            }
-
-            if (c==EOF) {
-                break;
-            }
-        }
-    }
-
-    /*
-     * move to the proper location in the file
-     */
-    if (latestFilePos != -1) {
-	    status = fseek (pserver->poutfile, latestFilePos, SEEK_SET);
-	    if (status!=IOCLS_OK) {
-		    fclose (pserver->poutfile);
-		    pserver->poutfile = stderr;
-		    return IOCLS_ERROR;
-	    }
-    }
-    else {
-	    status = fseek (pserver->poutfile, 0L, SEEK_END);
-	    if (status!=IOCLS_OK) {
-		    fclose (pserver->poutfile);
-		    pserver->poutfile = stderr;
-		    return IOCLS_ERROR;
-	    }
-    }
-
-    pserver->filePos = ftell (pserver->poutfile);
-
-    if (theLatestTime==invalidTime) {
-        if (pserver->filePos!=0) {
-            fprintf (stderr, "iocLogServer: **** Warning ****\n");
-            fprintf (stderr, "iocLogServer: no recognizable dates in \"%s\"\n", 
-                ioc_log_fileName);
-            fprintf (stderr, "iocLogServer: logging at end of file\n");
-        }
-    }
-
-	return IOCLS_OK;
-}
-
-
-/*
- *	openLogFileOld()
- * 
- */
-static int openLogFileOld (struct ioc_log_server *pserver)
-{
-	enum TF_RETURN ret;
-
-	if (ioc_log_fileLimit==0u) {
-		pserver->poutfile = stderr;
-		return IOCLS_ERROR;
-	}
-
-	if (pserver->poutfile && pserver->poutfile != stderr){
-		fclose (pserver->poutfile);
-		pserver->poutfile = NULL;
-	}
-    if (strlen(ioc_log_fileName)) {
-	pserver->poutfile = fopen(ioc_log_fileName, "r+");
-	if (pserver->poutfile) {
-		fclose (pserver->poutfile);
-		pserver->poutfile = NULL;
-		ret = truncateFile (ioc_log_fileName, ioc_log_fileLimit);
-		if (ret==TF_ERROR) {
-			return IOCLS_ERROR;
-		}
-		pserver->poutfile = fopen(ioc_log_fileName, "r+");
-	}
-	else {
-		pserver->poutfile = fopen(ioc_log_fileName, "w");
-	}
-
-	if (!pserver->poutfile) {
-		pserver->poutfile = stderr;
-		return IOCLS_ERROR;
-	}
-	strcpy (pserver->outfile, ioc_log_fileName);
-	pserver->max_file_size = ioc_log_fileLimit;
-        return seekLatestLine (pserver);
-    }
-    return IOCLS_OK;
-}
-
 /* checkLogFile()
 // checks file size and copies to <logfile>.log.bak if too big
 */
@@ -691,7 +513,6 @@ printf("pserver's filePos=%ld\n", pserver->filePos);
  */
 static int openLogFile(struct ioc_log_server *pserver)
 {
-	enum TF_RETURN ret;
 	int rc = IOCLS_OK;
 	char timestamp[ASCII_TIME_SIZE];
 
@@ -708,24 +529,7 @@ printf("SET poutfile is NULL\n");
 	}
 
     if (strlen(ioc_log_fileName) > 0) {
-printf("********************LOG FILENAME is valid %s\n", ioc_log_fileName);
-fprintf(ioc_log_fileName, "logfilename is valid %s\n", ioc_log_fileName);
-/*		pserver->poutfile = fopen(ioc_log_fileName, "r+"); /* open for reading and writing 
-		if (pserver->poutfile) { /* file exists, and is opened for rw 
-			fclose (pserver->poutfile);
-			pserver->poutfile = NULL;
-			ret = truncateFile (ioc_log_fileName, ioc_log_fileLimit);
-			if (ret==TF_ERROR) {
-				fprintf(stderr, "ERROR opening logfile %s for r+\n", ioc_log_fileName);
-				return IOCLS_ERROR;
-			}
-
-			pserver->poutfile = fopen(ioc_log_fileName, "r+");
-
-		} else { /* file didn't exist, open for writing 
-			pserver->poutfile = fopen(ioc_log_fileName, "w");
-		}
-*/
+		printf("********************LOG FILENAME is valid %s\n", ioc_log_fileName);
 		strcpy(pserver->outfile, ioc_log_fileName);
 		pserver->max_file_size = ioc_log_fileLimit;
 		
@@ -736,7 +540,7 @@ fprintf(ioc_log_fileName, "logfilename is valid %s\n", ioc_log_fileName);
 		} else { /* file doesn't exit */
 			pserver->poutfile = fopen(ioc_log_fileName, "w+");  /* create file */
 			fclose (pserver->poutfile);
-printf("opened and closed for write, to create new file\n");
+			printf("opened and closed for write, to create new file\n");
 			pserver->poutfile = fopen(ioc_log_fileName, "a+");  /* open for append */
 			if (!pserver->poutfile) {
 				fprintf(stderr, "ERROR opening logfile %s\n", ioc_log_fileName);
@@ -748,38 +552,13 @@ printf("opened and closed for write, to create new file\n");
     }
 /*    return IOCLS_OK; */
 	printf("Successfully opened logfile %s\n", pserver->outfile);
-/*	getTimestamp(timestamp); */
-	strcpy(timestamp, getTimestamp());
+	getTimestamp(timestamp); 
 	fprintf(pserver->poutfile, "%s: %s file opened\n", timestamp, ioc_log_fileName);
 	ioc_log_plogfile = pserver->poutfile;
 
 	return rc;
 }
 
-/*
- *	handleLogFileError()
- *
- */
-static void handleLogFileError(void)
-{
-	fprintf(stderr,
-		"iocLogServer: log file access problem (errno=%s)\n", 
-		strerror(errno));
-
-      /* disconnect from Oracle */
-      if ( db_disconnect() )
-        {
-        fprintf(stderr, "%s\n", "iocLogMsgServer: Disconnected from Oracle\n");
-	}
-        /*  RUN WITHOUT CONNECTION TO MSGSENDER
-        msgSenderExit();
-        */
-
-	exit(IOCLS_ERROR);
-}
-		
-
-
 /*
  *	acceptNewClient()
  *
@@ -848,8 +627,7 @@ printf ("====>accepting new Client: %s\n", pclient->name);
 	ipAddrToA (&addr, pclient->name, sizeof(pclient->name));
 
 /*	logTime(pclient); */
-	/*getTimestamp(pclient->ascii_time); */
-	strcpy(pclient->ascii_time, getTimestamp());
+	getTimestamp(pclient->ascii_time); 
 	
 #if 0
 	status = fprintf(
@@ -919,7 +697,6 @@ static void readFromClient(void *pParam)
 	struct iocLogClient	*pclient = (struct iocLogClient *)pParam;
 	int             	recvLength;
 	int			size;
-	char buff[1000];
 
 /* TESTING RECEIVE 
 printf ("====>getting from readFromClient: %s\n",pclient->name);
@@ -990,28 +767,31 @@ printf("caEventHandler()\n");
 	char timestamp[ASCII_TIME_SIZE];
 
 	if (args.status == ECA_NORMAL) {
-		printf("dbr=%i\n", *((int*)args.dbr));
+		printf("event dbr=%i\n", *((int*)args.dbr));
 		pvtype = (int *)ca_puser(args.chid);
 		if (pvtype == &ioc_log_caThrottleSecondsPvType) {
+			printf("event for throttle seconds pvtype\n");
 			ioc_log_throttleSeconds = *((int*)args.dbr);
 		} else if (pvtype == &ioc_log_caThrottleFieldsPvType) {
+			printf("event for throttle fields pvtype\n");
 			ioc_log_throttleFields = *((int*)args.dbr);
 		}
 	}
 
-	fprintf(ioc_log_plogfile, "new ca PV event: ioc_log_throttleSeconds=%d, ioc_log_throttleFields=%d\n", ioc_log_throttleSeconds, ioc_log_throttleFields);
+	getTimestamp(timestamp);
+	printf("new ca PV event: ioc_log_throttleSeconds=%d, ioc_log_throttleFields=%d\n", ioc_log_throttleSeconds, ioc_log_throttleFields);
+	fprintf(ioc_log_plogfile, "%s: new ca PV event: ioc_log_throttleSeconds=%d, ioc_log_throttleFields=%d\n", timestamp, ioc_log_throttleSeconds, ioc_log_throttleFields);
 }
 
 void caConnectionHandler(struct connection_handler_args args)
 {
 	int rc;
-	char pvname[100];
 	int dbtype;
 	int *pvtype;
 
-printf("caConnectionHandler\n");
+printf("caConnectionHandler()\n");
 	pvtype = (int *)ca_puser(args.chid);
-printf("pvtype=%d\n", pvtype);
+printf("pvtype=%p\n", pvtype);
 	if (pvtype == &ioc_log_caThrottleSecondsPvType) {
 		printf("PV_THROTTLE_SECONDS type\n");
 		dbtype = DBR_INT;
@@ -1021,9 +801,10 @@ printf("pvtype=%d\n", pvtype);
 	}
 
 	if (args.op == CA_OP_CONN_UP) {
-printf("monitor STARTED\n");
+		printf("monitor STARTED\n");
 		/* start monitor */
-		rc = ca_create_subscription(dbtype, 1, args.chid, DBE_VALUE, (caCh*)caEventHandler, &pvtype, NULL); 
+/*		rc = ca_create_subscription(dbtype, 1, args.chid, DBE_VALUE, (caCh*)caEventHandler, &pvtype, NULL); */
+		rc = ca_create_subscription(dbtype, 1, args.chid, DBE_VALUE, caEventHandler, &pvtype, NULL); 
 		if (rc != ECA_NORMAL) {
 			fprintf(stderr, "CA error %s occured while trying to create channel subscription.\n", ca_message(rc));
 		}
@@ -1052,15 +833,13 @@ static int caStartChannelAccess()
 }
 
 /* setupPVMonitors 
-// Setup channel access pv monitors for throttle settings
+// Setup channel access pv monitors for throttle settings, one for each pv
 */
 static int caStartMonitor(char *pvname, int *pvtype)
 {
 	int rc;
-	chid chidThrottleSeconds;
 	int priority=80;
 	int timeout=1;
-	int value;
 	chid chid;
 
 printf("caStartMonitor()\n");
@@ -1070,32 +849,33 @@ printf("caStartMonitor()\n");
 		fprintf(stderr, "CA error %s occurred while trying to create channel '%s'.\n", ca_message(rc), pvname);
 		return IOCLS_ERROR;
 	}
-	fprintf(stderr, "CA rc %s occurred while trying to create channel '%s'.\n", ca_message(rc), pvname);
+	fprintf(stderr, "CA %s occurred while trying to create channel '%s'.\n", ca_message(rc), pvname);
 
-	printf("%s pvtype=%d\n", pvname, pvtype);
+	printf("%s, pvtype=%p\n", pvname, pvtype);
 
 	/* Check for channels that didn't connect */
     ca_pend_event(timeout);
+
+	return IOCLS_OK;
 }
 
 
 /* getThrottleString
 // Concatenates valid columns to create string for database to use as constraint
-// #define THROTTLE_MSG         1 << 0    /* 1 
-// #define THROTTLE_FACILITY    1 << 1    /* 2 
-// #define THROTTLE_SEVERITY    1 << 2    /* 4 
-// #define THROTTLE_CODE        1 << 3    /* 8 
-// #define THROTTLE_HOST        1 << 4    /* 16 
-// #define THROTTLE_USER        1 << 5    /* 32 
-// #define THROTTLE_STATUS      1 << 6    /* 64 
-// #define THROTTLE_PROCESS     1 << 7    /* 128 
+// #define THROTTLE_MSG         1 << 0    // 1 
+// #define THROTTLE_FACILITY    1 << 1    // 2 
+// #define THROTTLE_SEVERITY    1 << 2    // 4 
+// #define THROTTLE_CODE        1 << 3    // 8 
+// #define THROTTLE_HOST        1 << 4    // 16 
+// #define THROTTLE_USER        1 << 5    // 32 
+// #define THROTTLE_STATUS      1 << 6    // 64 
+// #define THROTTLE_PROCESS     1 << 7    // 128 
 */
 static void getThrottleString(char *msg, char *facility, char *severity, char *code, char *host, char *user, char *status, char *process, char *throttleString, int throttleStringMask)
 {
 /*	printf("throttle mask:\n msg=%d\n facility=%d\n severity=%d\n error=%d\n host=%d\n user=%d\n status=%d\n process=%d\n", 
 			THROTTLE_MSG, THROTTLE_FACILITY, THROTTLE_SEVERITY, THROTTLE_ERROR, THROTTLE_HOST, THROTTLE_USER, THROTTLE_STATUS, THROTTLE_PROCESS);
 */
-	char buff[256];
 
 	memset(throttleString, '\0', THROTTLE_MSG_SIZE);
 
@@ -1150,14 +930,13 @@ static void getThrottleTimestamp(char *appTimestamp, char* throttleTimestamp, in
 
 	/* now build up throttle timestamp */
 	struct tm time;
-	char timestr[80];
 	/* convert string time to time struct */
 	strptime(appTimestamp, "%d-%b-%Y %H:%M:%S", &time);
 	time.tm_hour = 0;
 	time.tm_min = 0;
 	time.tm_sec = tseconds;
 	mktime(&time);
-	strftime(throttleTimestamp, NAME_SIZE, "%d-%b-%Y %H:%M:%S", &time);	
+	strftime(throttleTimestamp, sizeof(throttleTimestamp), "%d-%b-%Y %H:%M:%S", &time);	
 	printf(" throttleSeconds=%d, appTimestamp='%s', throttleTimestamp='%s'\n", throttleSeconds, appTimestamp, throttleTimestamp);
 }
 
@@ -1167,35 +946,24 @@ static void getThrottleTimestamp(char *appTimestamp, char* throttleTimestamp, in
  */
 static void parseMessages(struct iocLogClient *pclient)
 {
-	size_t lineIndex = 0;
 	int rc=0;
 	int i=0;
 	int isComplete = 0;
 	int index;
-	int endOfBuffer=0;
-	int start=0;
 	int end=0;
 	int lastCarriageReturnIndex=0;
-	char *ptmp;
 	int lastMsgLen=0;
-
 	size_t nchar;
-	size_t nTotChar;
-	size_t crIndex;
-
-	int ntci;
 	int ncharStripped;
 	char onerow[THROTTLE_MSG_SIZE]; /* single message */
 	char *pch;
 	char *prevpch;
-/*	char *ptmp;
-*/
 	int rowlen;
 	char buff[sizeof(pclient->recvbuf)];
 
 	/* message parameters */
-	char appTime[NAME_SIZE];
-	char throttleTime[NAME_SIZE];
+	char appTime[ASCII_TIME_SIZE];
+	char throttleTime[ASCII_TIME_SIZE];
 	char status[SEVERITY_SIZE];
 	char code[MSG_CODE_SIZE];
 	char severity[SEVERITY_SIZE]; 
@@ -1203,8 +971,6 @@ static void parseMessages(struct iocLogClient *pclient)
 	char host[HOSTNODE_SIZE];
 	char process[PROCESS_SIZE];
 	char user[USER_NAME_SIZE];
-	int logServer_id = 1;
-	char timeConverted;
 	char text[MSG_SIZE];
 	int appTimeDef = 0;
 	int count=1;
@@ -1250,8 +1016,7 @@ static void parseMessages(struct iocLogClient *pclient)
 		rowlen = strlen(onerow);
 
 		/* get logserver timestamp */
-/*		getTimestamp(pclient->ascii_time); */
-		strcpy(pclient->ascii_time, getTimestamp());
+		getTimestamp(pclient->ascii_time); 
 /*		printf("client ascii_time=%s\n", pclient->ascii_time); */
 
 		/* get message attributes */
@@ -1317,261 +1082,17 @@ printf("  PARTIAL message='%s'\n",&pclient->recvbuf[lastCarriageReturnIndex]);
 }
 
 
-/*
- * writeMessagesToLog()
- * sends data to database
- */
-static void writeMessagesToLogOld(struct iocLogClient *pclient)
-{
-	size_t lineIndex = 0;
-	int rc=0;
-
-	size_t nchar;
-	size_t nTotChar;
-	size_t crIndex;
-
-	int ntci;
-	int ncharStripped;
-
-	/* message parameters */
-	char appTime[NAME_SIZE];
-	char throttleTime[NAME_SIZE];
-	char msgStatus[SEVERITY_SIZE];
-	char msgCode[MSG_CODE_SIZE];
-	char msgSeverity[SEVERITY_SIZE]; 
-	char system[FACILITY_SIZE];
-	char host[HOSTNODE_SIZE];
-	char process[PROCESS_SIZE];
-	char user[USER_NAME_SIZE];
-	int logServer_id = 1;
-	char timeConverted;
-	char msg2write[MSG_SIZE];
-	int appTimeDef = 0;
-	int msgCount=1;
-	int commit=1;
-/*	int throttleSeconds=7; */
-	char throttleString[THROTTLE_MSG_SIZE];
-/*	int throttleStringMask; */
-	char onerow[THROTTLE_MSG_SIZE];
-
-/*	throttleStringMask = THROTTLE_FACILITY | THROTTLE_ERROR | THROTTLE_HOST; */
-
-	while (TRUE) {
-
-		if (lineIndex >= pclient->nChar) {
-			pclient->nChar = 0u;
-			break;
-		}
-
-
-		/* Find the first carrage return and create an entry in the log for the message associated with it. 
-		   If a carrage return does not exist and the buffer isnt full then move the partial message 
-		   to the front of the buffer and wait for a carrage return to arrive. If the buffer is full and there
-		   is no carrage return then force the message out and insert an artificial carrage return. */
-		nchar = pclient->nChar - lineIndex;
-		for (crIndex = lineIndex; crIndex < pclient->nChar; crIndex++) {
-	    	if ( pclient->recvbuf[crIndex] == '\n' ) {
-			/* printf ("====>MSG BUF IS *****%s*****\n", pclient->recvbuf); */
-			break;
-	    	}
-		}
-		if (crIndex < pclient->nChar) { /* carriage return before end of buffer */
-			nchar = crIndex - lineIndex;
-		} else {
-			nchar = pclient->nChar - lineIndex;
-			if ( nchar < sizeof ( pclient->recvbuf ) ) {  /* entry is incomplete, delete preceeding characters and move incomplete message to beginning */
-				if ( lineIndex != 0 ) {
-					pclient->nChar = nchar;
-					memmove(pclient->recvbuf, & pclient->recvbuf[lineIndex], nchar);  /* move incomplete entry to beginning */
-					memset(&pclient->recvbuf[lineIndex+1], '\0', sizeof(pclient->recvbuf) - (lineIndex+1)); /* clear rest of buffer */
-					lineIndex=0;  /* reset index to head */
-				}
-				break;
-			}
-		}
-
-		/* reset the file pointer if we hit the end of the file */
-		nTotChar = strlen(pclient->name) + strlen(pclient->ascii_time) + nchar + 3u;
-		assert (nTotChar <= INT_MAX);
-		ntci = (int) nTotChar;
-/*
-		if (pclient->pserver->poutfile) {
-			if ( pclient->pserver->filePos+ntci >= pclient->pserver->max_file_size ) {
-				if ( pclient->pserver->max_file_size >= pclient->pserver->filePos ) {
-					unsigned nPadChar;
-					// this gets rid of leftover junk at the end of the file 
-					nPadChar = pclient->pserver->max_file_size - pclient->pserver->filePos;
-					while (nPadChar--) {
-						rc = putc ( ' ', pclient->pserver->poutfile );
-						if (rc == EOF) {
-							handleLogFileError();
-						}
-					}
-				}
-
-# ifdef DEBUG
-				fprintf (stderr, "ioc log server: resetting the file pointer\n" );
-# endif
-				fflush ( pclient->pserver->poutfile );
-				rewind ( pclient->pserver->poutfile );
-				pclient->pserver->filePos = ftell ( pclient->pserver->poutfile );
-			}
-		}
-*/    
-		/* check log file size and move to backup if too big 
-		checkLogFile(pclient->pserver);
-*/
-		assert (nchar<INT_MAX);
-
-		getTimestamp(pclient->ascii_time); 
-printf("client ascii_time=%s\n", pclient->ascii_time);
-
-		ncharStripped = stripTags(nchar, pclient->name, pclient->ascii_time, &pclient->recvbuf[lineIndex], 
-		                          appTime, msgStatus, msgSeverity, system, host, msgCode, process, user, &appTimeDef);
-
-/*		ncharStripped = stripTags(nchar, pclient->name, pclient->ascii_time, &pclient->recvbuf[lineIndex], app_ascii_time, 
-		                          msgStatus, msgSeverity, system, host, msgErrCode, process, user, &app_time_def);
-
-		if (isNumeric(msgErrCode)) { errCode = atoi(msgErrCode); }
-		else { errCode = 0; }
-===============
-TO DO:
-convert msgStatus to status, msgErrCode to errCode
-                int status;
-                int errCode;
-================
-*/
-
-/*
-printf("%s\n", "===================================");
-printf("%s\n", "TESTMESSAGECONTENTS:");
-printf("*%s* *%s* *%s* *%s* *%s*\n", ascii_time, msgStatus, msgSeverity, system, host);
-printf("%s\n", "===================================");
-*/
-
-/* JROCK TESTING - RUN WITHOUT CONNECTION TO MSGSENDER
-              status = msgSenderWrite(
-                ascii_time, msgStatus, msgSeverity, system, host,
-                &pclient->recvbuf[lineIndex]+ncharStripped,
-                (int) nchar-ncharStripped);
-              if (status<0) handleLogFileError();
-*/
-              /* JROCK TEST: Oracle */
-              /* set up data first */ 
-	      /* dummy this up: app_time, orig_time are both 99999 */
-              /* dummy this up: status is 1, error_code is 2, verbosity is 3 */
-              /* set commit flag to 1.  May only want to commit every X rows tho... */
-
-		/* get message text */
-		strncpy(msg2write, &pclient->recvbuf[lineIndex]+ncharStripped, (int) nchar-ncharStripped);
-		msg2write[(int) nchar-ncharStripped] = 0;
-
-		/* format throttling timestamp */
-		getThrottleTimestamp(appTime, throttleTime, ioc_log_throttleSeconds);
-
-		/* format throttling string */
-		getThrottleString(msg2write, system, msgSeverity, msgCode, host, user, msgStatus, process, throttleString, ioc_log_throttleFields);
-/*
-		printf ("inserting *%s* *%s* *%s* *%s*\n",system, host, msg2write, msgSeverity); 
-		printf("pclient time is %s\n", pclient->ascii_time);
-*/
-/*
-		don't need this conversion: Oracle has to do it anyway
-		convertClientTime(pclient->ascii_time, pclientTime);
-
-*/
-		printf("ioc_log_program_name=%s\n", ioc_log_programName);
-		rc = db_insert(0, ioc_log_programName, system, msgSeverity, msg2write, pclient->ascii_time, appTime, throttleTime, appTimeDef,
-		               msgCode, host, user, msgStatus, process, msgCount, throttleString, commit); 
-		
-		if (rc == 1) {
-			/* printf("%s\n", "SUCCESSFUL INSERT INTO ERRLOG TABLE"); */
-			printf("%s %s %s\n", system,host,"msg2Oracle");
-			memset(onerow, '\0', sizeof(onerow));
-			strncpy(onerow, &pclient->recvbuf[lineIndex], nchar);
-			printf("onerow : '%s'\n", onerow);
-		} else {
-			printf("%s for message:  %s %s %s\n", "ERROR INSERTING INTO ERRLOG TABLE", system, host, msg2write);
-			/* TODO: save entire message to data file for future processing */
-			memset(onerow, '\0', sizeof(onerow));
-			strncpy(onerow, &pclient->recvbuf[lineIndex], nchar);
-			printf("onerow : '%s'\n", onerow);
-		}
-
-		if (pclient->pserver->poutfile) {
-		/* NOTE: !! change format string here then must change nTotChar calc above !! 
-			rc = fprintf(pclient->pserver->poutfile, "%s %s %.*s\n", pclient->name,	pclient->ascii_time, (int) nchar-ncharStripped,	&pclient->recvbuf[lineIndex]+ncharStripped);
-*/
-			rc = fprintf(pclient->pserver->poutfile, "%s %s %s\n", pclient->name, pclient->ascii_time, msg2write);
-			/* do we need this check?? */
-			if (rc < 0) {
-				handleLogFileError();
-			} else {
-		    	if (rc != (ntci-ncharStripped)) {
-			    	fprintf(stderr, "iocLogServer: didn't calculate number of characters correctly?\n");
-		    	}
-		    	pclient->pserver->filePos += rc;
-			}
-		}
-
-		/* update msg buffer pointer */
-		lineIndex += nchar+1u;
-	
-		printf("----------------------------------\n");
-
-	}
-
-/* JROCK TESTING - RUN WITHOUT CONNECTION TO MSGSENDER
-        msgSenderFlush();
-*/
-}
-
-static int convertClientTime(char *timeIn, 
-                             char *timeOut)
-{
-    struct tm time_tm;
-    int converted = 0;
-    char convTime[NAME_SIZE];
-
-    *convTime  = strptime(timeIn, "%a %b %d %T %Y", &time_tm);
-    if (convTime) {
-      strftime(convTime, NAME_SIZE, "%d-%b-%Y %T.00", &time_tm);
-      converted = 1;
-    } else {
-      strcpy(convTime, "00-000-0000 00:00:00.00");
-      converted = 0;
-    }
-    convTime[NAME_SIZE-1]=0;
-    strcpy(timeOut, convTime);
-
-    return converted;
-}
-
 /* checks if there is another tag within this message */
 static int hasNextTag(char *text, char *found) 
 {
 	int rc=0;
 	found = NULL;
-	char *end;
-	int done = 0; 
 	char buff[MSG_SIZE*2];
 	int len;
 
 	memset(buff, '\0', MSG_SIZE*2);
 
-	/* find end of this message 
-	end = strchr(text, '\n'); 
-
-printf("strlen(end)=%d, strlen(text)=%d\n", strlen(end), strlen(text));
-	strncpy(buff, text, strlen(text)-strlen(end));
-	
-
-	/* look for specific tags 
-	/* look between text-tag to end of message (end) 
-	len = strlen(text) - strlen(end);
-
-	strncpy(buff, text-5, len);
-*/
+	/* copy text into buffer so we can manipulate it */
 	strcpy(buff, text);
 	len = strlen(buff);
 
@@ -1622,27 +1143,24 @@ static int parseTags(int nchar, char *hostIn, char *timeIn, char *text, char *ti
 	char *valPtr;
 	char *nextTagPtr;
 	char *tmpPtr;
-	char *endPtr;  /* end of this message */
 	int  ncharStripped = 0;
 	int  charsize;
 	int rc;
 	int maxTagLen;
 	char thisTag[1000];
-	char thisMsg[2000];
-	char buff[256];
 /*  Initialize outputs.
 **  default is IOC
 **  host defaults to the host in pclient
 */
 	memset(thisTag, '\0', 1000);
-	memset(timeApp, '\0', strlen(timeApp));  /* formatted app time */
-	memset(status, '\0', strlen(status));
-	memset(severity, '\0', strlen(severity));
-	memset(facility, '\0', strlen(facility));
-	memset(host, '\0', strlen(host));
-	memset(code, '\0', strlen(code));
-	memset(process, '\0', strlen(process));
-	memset(user, '\0', strlen(user));
+	memset(timeApp, '\0', sizeof(timeApp));  /* formatted app time */
+	memset(status, '\0', sizeof(status));
+	memset(severity, '\0', sizeof(severity));
+	memset(facility, '\0', sizeof(facility));
+	memset(host, '\0', sizeof(host));
+	memset(code, '\0', sizeof(code));
+	memset(process, '\0', sizeof(process));
+	memset(user, '\0', sizeof(user));
 	*timeDef=0;
 
 	strcpy(facility, "IOC");
@@ -1734,13 +1252,6 @@ static int parseTags(int nchar, char *hostIn, char *timeIn, char *text, char *ti
 */
 	/* check if timestamp passed in */
 	if (strlen(timeApp) == 0) { /* no timestamp defined, set default to logserver current time */
-/*		struct tm time_tm;
-		tmpPtr = strptime(timeIn, "%a %b %d %T %Y", &time_tm);
-		/* set app timestamp to logserver timestamp in format 14-Feb-2012 10:10:38.00 
-		if (tmpPtr) strftime(timeApp, NAME_SIZE, "%d-%b-%Y %T.00", &time_tm);
-		else strcpy(timeApp, "00-000-0000 00:00:00.00"); 
-		timeApp[NAME_SIZE-1]=0;
-*/
 		strcpy(timeApp, timeIn);
 		*timeDef = 1;
 		printf("no timestamp defined, use log server's, set timeDef=1\n");
@@ -1752,213 +1263,7 @@ static int parseTags(int nchar, char *hostIn, char *timeIn, char *text, char *ti
 	return ncharStripped;
 }
 
-
-/* the first 4 parameters are input from the pclient structure */
-/* the others are the parsed tag strings */
-/*static int stripTags(int nchar, char *hostIn, char *timeIn, char *text,
-                     char *timeOut,
-                     char *msgStatus, char *msgSeverity,
-                     char *system,    char *host, 
-                     char *msgErrCode, char *process, char *user, int *timeDef
-                     ) {
-ncharStripped = stripTags(nchar, pclient->name, pclient->ascii_time, &pclient->recvbuf[lineIndex],
-                app_ascii_time, &status, msgSeverity, system, host, &errCode, process, user, &app_time_def);
-
-
-//
-// timeIn : logserver time
-// timeApp : application time 
-*/
-static int stripTags(int nchar, char *hostIn, char *timeIn, char *text, char *timeApp,  char *msgStatus, char *msgSeverity, 
-                     char *facility, char *host, char *msgCode, char *process, char *user, int *timeDef) {
-	char *charPtr = text;  
-	char *tagPtr;         
-	char *lastPtr;
-	char *valPtr;
-	char *nextTagPtr;
-	char *tmpPtr;
-	char *endPtr;  /* end of this message */
-	int  ncharStripped = 0;
-	int  charsize;
-	int rc;
-	int maxTagLen;
-	char thisTag[1000];
-	char thisMsg[2000];
-	char buff[256];
-/*  Initialize outputs.
-**  default is IOC
-**  host defaults to the host in pclient
-*/
-	memset(thisTag, '\0', 1000);
-	memset(timeApp, '\0', sizeof(timeApp));  /* formatted app time */
-	memset(msgStatus, '\0', sizeof(msgStatus));
-	memset(msgSeverity, '\0', sizeof(msgSeverity));
-	memset(facility, '\0', sizeof(facility));
-	memset(host, '\0', sizeof(host));
-	memset(msgCode, '\0', sizeof(msgCode));
-	memset(process, '\0', sizeof(process));
-	memset(user, '\0', sizeof(user));
-	*timeDef=0;
-
-	strcpy(facility, "IOC");
-	maxTagLen = NAME_SIZE;    /* default maxTagLen to NAME_SIZE */
-
-/**  Look for tags at the beginning of the text and strip them out.
-**  Stop looking if there are no more tags or an unknown tag.
-*/
-  /* IF THERE ARE TAGGED VALUES WITH EMBEDDED SPACES, THIS WILL TRUNCATE THE TAG VAL AT
-     THE FIRST SPACE - NEEDS FIXING.  INSTEAD, GO FOR THE LAST SPACE BEFORE THE "="
-     PERHAPS STRTOK WOULD BE A BETTER PLAN.
-     FOR NOW, DONT ALLOW EMBEDDED SPACES
-	while (charPtr) {
-		tagPtr  = strchr(charPtr, '='); // look for a valid tag
-		if (tagPtr) {
-			lastPtr = strchr(tagPtr, ' '); // look for space, assume there will be at least one more space
-			}
-		}
-		else lastPtr = 0;
-  */
-
-/*	while (charPtr) {
-		tagPtr  = strchr(charPtr, '='); // look for a valid tag
-		if (tagPtr && (tagPtr < endPtr)) {
-			nextTagPtr = strchr(tagPtr+1, '='); // look for next tag
-			if (nextTagPtr && (nextTagPtr < endPtr)) {
-				tmpPtr = strchr(tagPtr, ' '); // look for space, assume there will be at least one more space
-				while (tmpPtr < nextTagPtr) {
-					//lastPtr = strchr(tagPtr, ' '); 
-					tmpPtr = strchr(tmpPtr, ' '); // look for space
-					//lastPtr  = tmpPtr; // look for next tag
-					if (tmpPtr < nextTagPtr) lastPtr = tmpPtr;
-					if (tmpPtr) tmpPtr += 1;
-				}
-				// make sure this is a tag and not a "=" within the message text
-				if (hasNextTag(nextTagPtr, tmpPtr) == 0) { // no next tag, the "=" is within the message text
-					printf("no next tag found for %s\n", tmpPtr);
-					lastPtr= strchr(tagPtr, ' ');
-				} else { 			
-				}		
-			}
-//			} else { // no tag, message text
-//				lastPtr= strchr(tagPtr, ' ');
-//				//lastPtr = 0;  
-//			}
-
-		}
-		else lastPtr = 0;
-*/
-	/* find end of this message, multiple messages are in pclient->recvbuf */
-	endPtr = strchr(charPtr, '\n');
-
-	/* start parsing message */
-	while (charPtr) {
-		tagPtr  = strchr(charPtr, '='); /* look for a valid tag */
-		if (tagPtr && (tagPtr < endPtr)) {
-			nextTagPtr = strchr(tagPtr+1, '='); /* look for next tag */
-			if (nextTagPtr && (nextTagPtr < endPtr)) {
-				/* make sure this is a tag and not a "=" within the message text */
-				rc = hasNextTag(nextTagPtr, tmpPtr);					
-				if (rc == 0) { /* no next tag, the "=" is within the message text */
-					printf("no next tag for %s\n", nextTagPtr);
-					lastPtr= strchr(tagPtr, ' '); /* look for space between this tag value and the message text */
-				} else { /* this is a tag */
-					tmpPtr = strchr(tagPtr, ' '); /* look for space, assume there will be at least one more space */
-					while (tmpPtr < nextTagPtr) { 
-						tmpPtr = strchr(tmpPtr, ' '); /* look for last space before next tag */
-						if (tmpPtr < nextTagPtr) lastPtr = tmpPtr;
-						if (tmpPtr) tmpPtr += 1;
-					}
-				}
-			} else { /* last tag */
-				lastPtr= strchr(tagPtr, ' ');
-			}
-		}
-		else lastPtr = 0;
-
-/* ==============s
-TO DO:
-make sure all tags are here!  document them.
-reconcile with fwdClis, etc.
-==============
-*/
-		/* find a tag */
-		if (tagPtr && lastPtr) {
-			if ( !strncmp(charPtr,"stat=",5)) { valPtr = msgStatus; maxTagLen = NAME_SIZE; strcpy(thisTag,"stat"); }
-			else if ( !strncmp(charPtr,"sevr=",5)) { valPtr = msgSeverity; maxTagLen = SEVERITY_SIZE; strcpy(thisTag,"sevr"); }
-			else if ( !strncmp(charPtr,"fac=" ,4)) { valPtr = facility; maxTagLen = FACILITY_SIZE; strcpy(thisTag,"fac"); }
-			else if ( !strncmp(charPtr,"facility=" ,9)) { valPtr = facility; maxTagLen = FACILITY_SIZE; strcpy(thisTag,"facility"); }
-			else if ( !strncmp(charPtr,"host=",5)) { valPtr = host; maxTagLen = HOSTNODE_SIZE; strcpy(thisTag,"host"); }
-			else if ( !strncmp(charPtr,"code=",5)) { valPtr = msgCode; maxTagLen = NAME_SIZE; strcpy(thisTag,"code"); }
-			else if ( !strncmp(charPtr,"proc=",5)) { valPtr = process; maxTagLen = PROCESS_SIZE; strcpy(thisTag,"proc"); }
-			else if ( !strncmp(charPtr,"user=",5)) { valPtr = user; maxTagLen = USER_NAME_SIZE; strcpy(thisTag,"user"); }
-			else if ((!strncmp(charPtr,"time=",5)) && (charPtr[7]  == '-') && (charPtr[11] == '-') && (charPtr[16] == ' ')) {
-				valPtr = timeApp; strcpy(thisTag,"time");
-				/* lastPtr = tagPtr + 24; */
-			} else valPtr = 0;
-
-			/* get value of the tag */
-			if (valPtr) {
-				charsize = lastPtr - tagPtr;
-/*        it's not always NAME_SIZE!  this check depends on the specific tag
-        chop off the length to the max len allowed
-        if (charsize > NAME_SIZE) charsize = NAME_SIZE;*/
-				if (charsize > maxTagLen) charsize = maxTagLen;
-				tagPtr++;
-				strncpy(valPtr, tagPtr, charsize);
-				valPtr[charsize-1] = 0;
-				printf("Tag: %s, Value: %s\n", thisTag, valPtr);
-				lastPtr++;
-				ncharStripped = lastPtr - text;
-				charPtr = lastPtr;
-			} else {  /* didn't find a value */
-				charPtr = 0;
-			}
-		} else { /* no tag, end of pclient recv buffer */
-			charPtr = 0;
-		}
-	}
-/*	printf("Msg: %s\n", text);  */
-
-	/* now clean up data and handle defaults */
-
-	/* no host defined, set default */
-	if (strlen(host) == 0) { 	
-		strncpy(host, hostIn, HOSTNODE_SIZE);
-		host[NAME_SIZE-1]=0;
-		/* Remove IP domain name */
-		charPtr = strchr(host, '.');
-		if (charPtr) *charPtr = 0;
-	}
-	/* prepend "SLC" to anything coming from mcc host 
-	if ((strncmp(host, "MCC", 3)==0) || (strncmp(host, "mcc.slac.stanford.edu", 21)==0)) {
-		printf("current facility=%s\n", facility);
-		strcpy(buff, "SLC-");
-		strcat(buff, facility);
-		strcpy(facility, buff);
-		printf("new facility=%s\n", facility);
-	}		
-*/
-	/* check if timestamp passed in */
-	if (strlen(timeApp) == 0) { /* no timestamp defined, set default to logserver current time */
-/*		struct tm time_tm;
-		tmpPtr = strptime(timeIn, "%a %b %d %T %Y", &time_tm);
-		/* set app timestamp to logserver timestamp in format 14-Feb-2012 10:10:38.00 
-		if (tmpPtr) strftime(timeApp, NAME_SIZE, "%d-%b-%Y %T.00", &time_tm);
-		else strcpy(timeApp, "00-000-0000 00:00:00.00"); 
-		timeApp[NAME_SIZE-1]=0;
-*/
-		strcpy(timeApp, timeIn);
-		*timeDef = 1;
-		printf("no timestamp defined, use log server's, set timeDef=1\n");
-	} else {
-		*timeDef = 0;
-		printf("app timestamp defined, set timeDef=0\n");
-	}
-
-	return ncharStripped;
-}
-
-  
+ 
 /*
  * freeLogClient ()
  */
@@ -2004,15 +1309,12 @@ static void freeLogClient(struct iocLogClient     *pclient)
 
 /* get current timestamp in format 14-Feb-2012 14:24:02.09 */
 /* assume timestamp is of length NAME_SIZE */
-/*static void getTimestamp(char *timestamp) */
-static char *getTimestamp()
+static void getTimestamp(char *timestamp) 
 {
 	struct timeval tv;
 	struct tm* ptm;
 	long milliseconds;
-	char year[10];
 	char milli[10];
-	char timestamp[ASCII_TIME_SIZE];
 
 	memset(timestamp, '\0', sizeof(timestamp));
 
@@ -2021,7 +1323,7 @@ static char *getTimestamp()
 	ptm = localtime(&tv.tv_sec);
 
 	/* format to seconds */
-	strftime(timestamp, sizeof(timestamp), "%d-%b-%Y %H:%M:%S", ptm);
+	strftime(timestamp, ASCII_TIME_SIZE, "%d-%b-%Y %H:%M:%S", ptm);
 /*	strftime(throttlingTimestamp, NAME_SIZE, "%d-%b-%Y %H:%M:%S", &time);	*/
 
 	/* format year */
@@ -2034,34 +1336,8 @@ static char *getTimestamp()
 	sprintf(milli, ".%03ld", milliseconds);
 	strcat(timestamp, milli);
 /*	strcat(timestamp, year); */
-	return timestamp;
 }
 
-/*
- *
- *	logTime()
- *
- *
-static void logTime(struct iocLogClient *pclient)
-{
-	time_t sec;
-	struct tm sec_tm;
-	char *pcr;
-
-	printf("pclient->ascii_time in logTime()=%s\n", pclient->ascii_time);
-
-	sec = time (NULL);
-	localtime_r(&sec, &sec_tm);
-	strftime(pclient->ascii_time, sizeof (pclient->ascii_time), "%a %b %d %T %Y", &sec_tm);
-	pclient->ascii_time[sizeof(pclient->ascii_time)-1] = '\0';
-	pcr = strchr(pclient->ascii_time, '\n');
-	if (pcr) {
-		*pcr = '\0';
-	}
-
-	getTimestamp(pclient);
-}
-*/
 /*
  *
  *	getConfig()
