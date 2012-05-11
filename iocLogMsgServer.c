@@ -25,7 +25,7 @@
  *      Date:       11/02/07
  */
 
-
+/*
 #include    <stddef.h>
 #include	<stdlib.h>
 #include	<string.h>
@@ -47,7 +47,7 @@
 #include	"dbDefs.h"
 #include 	"fdmgr.h"
 #include 	"osiSock.h"
-
+*/
 /*
 #ifdef __cplusplus
 extern "C" {
@@ -68,126 +68,8 @@ int ca_flush_io();
 
 /* ************************ */
 /* new for logging to Oracle */
-extern int db_connect(char server[31]);
-extern int db_disconnect();
-extern int db_commit();
 
-extern int db_insert 
-    (
-    int  errlog_id,
-	char program_name[21],
-    char facility_name[41],
-    char severity[21],
-    char msg[681],
-    char logServer_ascii_time[31],
-    char app_ascii_time[31], 
-    char throttle_ascii_time[31],
-    int  app_timestamp_def,
-	char msg_code[257],
-    char hostnode[41],
-    char user_name[41],
-   	char msg_status[21],
-    char process_name[41],
-    long msg_count,
-	char throttle_parameter[2001],
-    int commit_flag
-    );
-
-/* globals */
-static unsigned short ioc_log_port;
-static long ioc_log_fileLimit;
-static char ioc_log_fileName[256];
-static char ioc_log_fileCommand[256];
-static char ioc_log_programName[10];
-static int ioc_log_throttleSeconds;
-static int ioc_log_throttleFields;
-static char ioc_log_testDirectory[500];  /* oracle testing */
-static FILE *ioc_log_plogfile;           /* pointer to log file handler */
-
-
-/* Channel Access pv type hooks */
-static int ioc_log_caThrottleSecondsPvType;
-static int ioc_log_caThrottleFieldsPvType;
-
-#define IOCLS_ERROR (-1)
-#define IOCLS_OK 0
-
-#define MSG_SIZE 681
-#define NAME_SIZE 32
-#define USER_NAME_SIZE 41
-#define FACILITY_SIZE 41
-#define SEVERITY_SIZE 21
-#define ASCII_TIME_SIZE 31
-#define DESTINATION_SIZE 81
-#define HOSTNODE_SIZE 41
-#define PROCESS_SIZE 41
-#define THROTTLE_MSG_SIZE 2001
-#define MSG_CODE_SIZE 257
-
-#define THROTTLE_MSG         1 << 0    /* 1 */
-#define THROTTLE_FACILITY    1 << 1    /* 2 */
-#define THROTTLE_SEVERITY    1 << 2    /* 4 */
-#define THROTTLE_CODE        1 << 3    /* 8 */
-#define THROTTLE_HOST        1 << 4    /* 16 */
-#define THROTTLE_USER        1 << 5    /* 32 */
-#define THROTTLE_STATUS      1 << 6    /* 64 */
-#define THROTTLE_PROCESS     1 << 7    /* 128 */
-
-struct iocLogClient {
-	int insock;
-	struct ioc_log_server *pserver;
-	size_t nChar;
-	char recvbuf[1024];
-	char name[NAME_SIZE];
-/*	char ascii_time[NAME_SIZE]; */
-	char ascii_time[ASCII_TIME_SIZE];
-};
-
-struct ioc_log_server {
-	char outfile[256];
-	long filePos;
-	FILE *poutfile;
-	void *pfdctx;
-	SOCKET sock;
-	long max_file_size;
-};
-
-
-/* ORACLE TEST FUNCTIONS */
-extern void parseMessagesTest(const char *directory);
-extern void sendMessagesTest(int nrows);
-
-
-static void acceptNewClient (void *pParam);
-static void readFromClient(void *pParam);
-static void getTimestamp (char *timestamp);
-/*static char *getTimestamp(); */
-static int getConfig(void);
-static int openLogFile(struct ioc_log_server *pserver);
-static void envFailureNotify(const ENV_PARAM *pparam);
-static void freeLogClient(struct iocLogClient *pclient);
-static void parseMessages(struct iocLogClient *pclient);
-static int parseTags(int nchar, char *hostIn, char *timeIn, char *text, char *timeApp,  char *status, char *severity, 
-                     char *facility, char *host, char *code, char *process, char *user, int *timeDef);
-static int hasNextTag(char *text, char *found);
-static void getThrottleTimestamp(char *appTimestamp, char* throttleTimestamp, int throttleSeconds);
-static void getThrottleString(char *msg, char *system, char *severity, char *code, char *host, char *user, char *status, char *process, char *throttleString, int throttleStringMask);
-void caEventHandler(evargs args);
-void caConnectionHandler(struct connection_handler_args args);
-static int caStartChannelAccess();
-static int caStartMonitor(char *pvname, int *pvtype);
-int isNumeric (const char * s);
-static void initGlobals();
-static void printHelp();
-
-#ifdef UNIX
-static int setupSIGHUP(struct ioc_log_server *);
-static void sighupHandler(int);
-static void serviceSighupRequest(void *pParam);
-static int getDirectory(void);
-static int sighupPipe[2];
-#endif
-
+#include "iocLogMsgServer.h"
 /*
  *
  *	main()
@@ -208,11 +90,6 @@ int main(int argc, char* argv[]) {
 
 	int ntestrows=0;  /* delete me */
 	ntestrows=0;
-
-	/* initialize variables */
-	initGlobals();
-	strcpy(throttleSecondsPv, "SIOC:SYS0:AL00:THROTTLE_SECONDS");
-	strcpy(throttleFieldsPv, "SIOC:SYS0:AL00:THROTTLE_FIELDS");
 
 	printf("argc=%d\n", argc);
 
@@ -255,6 +132,12 @@ int main(int argc, char* argv[]) {
 		}
 
 	}
+
+	/* initialize variables */
+	initGlobals();
+	strcpy(throttleSecondsPv, "SIOC:SYS0:AL00:THROTTLE_SECONDS");
+	strcpy(throttleFieldsPv, "SIOC:SYS0:AL00:THROTTLE_FIELDS");
+
 	printf("ioc_log_program_name=%s\nthrottleSecondsPv=%s\nthrottleFieldsPv=%s\n", ioc_log_programName, throttleSecondsPv, throttleFieldsPv);
 
 	/* RUN_ORACLE_STRESS_TEST */
@@ -358,7 +241,7 @@ printf("Sending %d messages\n", ntestrows);
 		}
 #	endif
 
-	status = openLogFile(pserver);
+	status = openLogFile(pserver); 
 	if (status < 0) {
 		fprintf(stderr, "File access problems to `%s' because `%s'\n", ioc_log_fileName, strerror(errno));
 		return IOCLS_ERROR;
@@ -461,9 +344,10 @@ static void initGlobals()
 	ioc_log_throttleSeconds = 1;          /* 1 second */
 	ioc_log_throttleFields = 1;           /* msg field */
 	strcpy(ioc_log_testDirectory, "");
+
 }
 
-/* checkLogFile()
+/* checkLogFileOld()
 // checks file size and copies to <logfile>.log.bak if too big
 */
 static int checkLogFile(struct ioc_log_server *pserver)
@@ -482,7 +366,8 @@ static int checkLogFile(struct ioc_log_server *pserver)
 	fileSize = ftell(pserver->poutfile);
 
 	/* check if file is too big */
-	if (fileSize > pserver->max_file_size) {
+/*	if (fileSize > pserver->max_file_size) { */
+	if (fileSize > ioc_log_fileLimit) {
 		fprintf(pserver->poutfile, "Logfile too big %d, Rename %s to %s\n", fileSize, pserver->outfile, newname);
 		fclose(pserver->poutfile);
 		strcpy(newname, pserver->outfile);
@@ -507,9 +392,114 @@ printf("pserver's filePos=%ld\n", pserver->filePos);
 	return rc;
 }
 
+/* checkLogFile()
+// checks file size and copies to <logfile>.log.bak if too big
+*/
+static int checkLogFileNew()
+{
+	int fileSize=0;
+	char newname[256];
+	int rc=IOCLS_OK;
+	int rrc = 0;
+
+	if (ioc_log_plogfile) {
+		fflush(ioc_log_plogfile);
+	}
+
+	/* get file size */
+	fseek(ioc_log_plogfile, 0, SEEK_END);
+	fileSize = ftell(ioc_log_plogfile);
+
+	/* check if file is too big */
+/*	if (fileSize > pserver->max_file_size) { */
+	if (fileSize > ioc_log_fileLimit) {
+		fprintf(ioc_log_plogfile, "Logfile too big %d, Rename %s to %s\n", fileSize, ioc_log_fileName, newname);
+		fclose(ioc_log_plogfile);
+		strcpy(newname, ioc_log_fileName);
+		strcat(newname, ".bak");
+		printf("Logfile too big %d, Rename %s to %s\n", fileSize, ioc_log_fileName, newname);
+		rrc = rename(ioc_log_fileName, newname);
+		if (rrc != 0) printf("ERROR renaming %s to %s, rc=%d\n", ioc_log_fileName, newname, rrc); /* don't return error, hopefully renaming works later */
+		
+		/* reset logfile file pointer */
+		ioc_log_plogfile = fopen(ioc_log_fileName, "a+");
+		if (!ioc_log_plogfile) {
+			ioc_log_plogfile = stderr;
+			rc = IOCLS_ERROR;
+			return rc;
+		}
+	}
+	
+	/* set file pos 
+    pserver->filePos = ftell(pserver->poutfile); 
+printf("pserver's filePos=%ld\n", pserver->filePos);
+*/
+	return rc;
+}
+
+/*
+ *	openLogFileNew()
+ *  set ioc_log_plogfile file handler
+ * 
+ * FIXME: does pserver need to be used for logfile now that Oracle is used??
+ */
+static int openLogFileNew()
+{
+	int rc = IOCLS_OK;
+	char timestamp[ASCII_TIME_SIZE];
+
+	if (ioc_log_fileLimit==0u) {
+		printf("ERROR: ioc_log_fileLimit=0\n");
+		return IOCLS_ERROR;
+	}
+
+/*	if (pserver->poutfile && pserver->poutfile != stderr){ 
+		fclose (pserver->poutfile);
+		pserver->poutfile = NULL;
+printf("SET poutfile is NULL\n");
+	}
+*/
+	if (ioc_log_plogfile && ioc_log_plogfile != stderr) {
+		fclose(ioc_log_plogfile);
+		ioc_log_plogfile = NULL;
+		printf("Set ioc_log_plogfile to NULL\n");
+	}
+
+    if (strlen(ioc_log_fileName) > 0) {
+		printf("********************LOG FILENAME is valid %s\n", ioc_log_fileName);
+/*		strcpy(pserver->outfile, ioc_log_fileName); 
+		pserver->max_file_size = ioc_log_fileLimit; */
+		
+		/* try opening for reading and writing */
+		ioc_log_plogfile = fopen(ioc_log_fileName, "a+"); 
+		if (ioc_log_plogfile) {
+			checkLogFileNew(ioc_log_plogfile);  /* check logfile if logfile is too big and needs to be renamed */
+		} else { /* file doesn't exit */
+			ioc_log_plogfile = fopen(ioc_log_fileName, "w+");  /* create file */
+			fclose (ioc_log_plogfile);
+			printf("opened and closed for write, to create new file\n");
+			ioc_log_plogfile = fopen(ioc_log_fileName, "a+");  /* open for append */
+			if (!ioc_log_plogfile) {
+				fprintf(stderr, "ERROR opening logfile %s\n", ioc_log_fileName);
+				ioc_log_plogfile = stderr;
+				return IOCLS_ERROR;
+			}
+		}
+/*        return seekLatestLine (pserver); */	
+    }
+/*    return IOCLS_OK; */
+	printf("Successfully opened logfile %s\n", ioc_log_fileName);
+	getTimestamp(timestamp); 
+	fprintf(ioc_log_plogfile, "%s: %s file opened\n", timestamp, ioc_log_fileName);
+
+	return rc;
+}
+
 /*
  *	openLogFile()
  *  set ioc_log_plogfile file handler
+ * 
+ * FIXME: does pserver need to be used for logfile now that Oracle is used??
  */
 static int openLogFile(struct ioc_log_server *pserver)
 {
@@ -765,6 +755,7 @@ void caEventHandler(evargs args)
 printf("caEventHandler()\n");
 	int *pvtype;
 	char timestamp[ASCII_TIME_SIZE];
+	getTimestamp(timestamp);
 
 	if (args.status == ECA_NORMAL) {
 		printf("event dbr=%i\n", *((int*)args.dbr));
@@ -772,15 +763,16 @@ printf("caEventHandler()\n");
 		if (pvtype == &ioc_log_caThrottleSecondsPvType) {
 			printf("event for throttle seconds pvtype\n");
 			ioc_log_throttleSeconds = *((int*)args.dbr);
+			fprintf(ioc_log_plogfile, "%s: CA event: ioc_log_throttleSeconds=%d\n", timestamp, ioc_log_throttleSeconds);
+			printf("%s: CA event: ioc_log_throttleSeconds=%d\n", timestamp, ioc_log_throttleSeconds);
 		} else if (pvtype == &ioc_log_caThrottleFieldsPvType) {
 			printf("event for throttle fields pvtype\n");
 			ioc_log_throttleFields = *((int*)args.dbr);
+			fprintf(ioc_log_plogfile, "%s: CA event: ioc_log_throttleFields=%d\n", timestamp, ioc_log_throttleFields);
+			printf("%s: CA event: ioc_log_throttleFields=%d\n", timestamp, ioc_log_throttleFields);
 		}
 	}
 
-	getTimestamp(timestamp);
-	printf("new ca PV event: ioc_log_throttleSeconds=%d, ioc_log_throttleFields=%d\n", ioc_log_throttleSeconds, ioc_log_throttleFields);
-	fprintf(ioc_log_plogfile, "%s: new ca PV event: ioc_log_throttleSeconds=%d, ioc_log_throttleFields=%d\n", timestamp, ioc_log_throttleSeconds, ioc_log_throttleFields);
 }
 
 void caConnectionHandler(struct connection_handler_args args)
@@ -788,6 +780,9 @@ void caConnectionHandler(struct connection_handler_args args)
 	int rc;
 	int dbtype;
 	int *pvtype;
+	char timestamp[ASCII_TIME_SIZE];
+
+	getTimestamp(timestamp);
 
 printf("caConnectionHandler()\n");
 	pvtype = (int *)ca_puser(args.chid);
@@ -801,35 +796,21 @@ printf("pvtype=%p\n", pvtype);
 	}
 
 	if (args.op == CA_OP_CONN_UP) {
-		printf("monitor STARTED\n");
+		printf("\nmonitor STARTED\n");
+		fprintf(ioc_log_plogfile, "==========================================================\n");
+		fprintf(ioc_log_plogfile, "%s: MONITOR started for pvtype=%p\n", timestamp, pvtype);
 		/* start monitor */
 /*		rc = ca_create_subscription(dbtype, 1, args.chid, DBE_VALUE, (caCh*)caEventHandler, &pvtype, NULL); */
 		rc = ca_create_subscription(dbtype, 1, args.chid, DBE_VALUE, caEventHandler, &pvtype, NULL); 
 		if (rc != ECA_NORMAL) {
-			fprintf(stderr, "CA error %s occured while trying to create channel subscription.\n", ca_message(rc));
+			printf("ERROR ca_create_subscription(): rc=%d, msg='%s', pvtype=%p\n", rc, ca_message(rc), pvtype);
 		}
 	} else { /* connection not up, use default value */
-		fprintf(stderr, "CA connection not established.\n");
+		fprintf(stderr, "CA connection not established\n");
+		fprintf(ioc_log_plogfile, "%s: ERROR CA connection not established for pvtype=%p ", timestamp, pvtype);
 	}
-}
 
-static int caStartChannelAccess()
-{
-	int rc = IOCLS_OK;
-
-	/* Start up Channel Access */
-	printf("caStartChannelAccess()\n");
-/*	rc = ca_context_create(ca_disable_preemptive_callback); */
-	rc = ca_context_create(ca_enable_preemptive_callback); 
-	if (rc != ECA_NORMAL) {
-		fprintf(stderr, "CA error %s occurred while trying to start channel access.\n", ca_message(rc));
-		return IOCLS_ERROR;
-    } else {
-		rc = IOCLS_OK;
-	}
-	fprintf(stderr, "CA rc %s occurred while trying to start channel access.\n", ca_message(rc));
-	
-	return rc;
+	fprintf(ioc_log_plogfile, "==========================================================\n");
 }
 
 /* setupPVMonitors 
@@ -838,25 +819,63 @@ static int caStartChannelAccess()
 static int caStartMonitor(char *pvname, int *pvtype)
 {
 	int rc;
-	int priority=80;
-	int timeout=1;
-	chid chid;
+	int priority=50;
+/*	int timeout=10; */
+	chid chanid;
+	char timestamp[ASCII_TIME_SIZE];
+
+	getTimestamp(timestamp);
+
 
 printf("caStartMonitor()\n");
 	/* Create CA connections */
-	rc = ca_create_channel(pvname, (caCh*)caConnectionHandler, pvtype, priority, &chid); 
+	rc = ca_create_channel(pvname, (caCh*)caConnectionHandler, pvtype, priority, &chanid);  
 	if (rc != ECA_NORMAL) {
-		fprintf(stderr, "CA error %s occurred while trying to create channel '%s'.\n", ca_message(rc), pvname);
+		printf("ERROR ca_create_channel(): rc=%d, msg='%s', pvname=%s\n", rc, ca_message(rc), pvname);
+		fprintf(ioc_log_plogfile, "%s: ERROR ca_create_channel(): rc=%d, msg='%s', pvname=%s\n", timestamp, rc, ca_message(rc), pvname);
 		return IOCLS_ERROR;
 	}
-	fprintf(stderr, "CA %s occurred while trying to create channel '%s'.\n", ca_message(rc), pvname);
-
-	printf("%s, pvtype=%p\n", pvname, pvtype);
+	printf("ca_create_channel(): rc=%d, msg='%s', pvname=%s\n", rc, ca_message(rc), pvname);
+	printf("pvname=%s, pvtype=%p\n", pvname, pvtype);
+	fprintf(ioc_log_plogfile, "%s: ca_create_channel(): rc=%d, msg='%s', pvname=%s\n", timestamp, rc, ca_message(rc), pvname);
+	fprintf(ioc_log_plogfile, "%s: pvname=%s, pvtype=%p\n", timestamp, pvname, pvtype);
 
 	/* Check for channels that didn't connect */
-    ca_pend_event(timeout);
+/*    ca_pend_event(timeout); 
+	rc = ca_pend_io(timeout);
+	printf("ca_pend_io(): rc=%d, msg='%s', pvname=%s\n", rc, ca_message(rc), pvname);
+*/
+	rc = ca_state(chanid);
+	printf("ca_state(): rc=%d, msg='%s', pvname=%s\n", rc, ca_message(rc), pvname);
 
 	return IOCLS_OK;
+}
+
+
+/* start channel access */
+static int caStartChannelAccess()
+{
+	int rc = IOCLS_OK;
+	char timestamp[ASCII_TIME_SIZE];
+
+	getTimestamp(timestamp);
+
+
+	/* Start up Channel Access */
+	printf("caStartChannelAccess()\n");
+/*	rc = ca_context_create(ca_disable_preemptive_callback); */
+	rc = ca_context_create(ca_enable_preemptive_callback); 
+	if (rc != ECA_NORMAL) {
+		fprintf(stderr, "ERROR ca_context_create(): rc=%d, msg='%s'\n", rc, ca_message(rc));
+		fprintf(ioc_log_plogfile, "%s: ERROR ca_context_create(): rc=%d, msg='%s'\n", timestamp, rc, ca_message(rc));
+		return IOCLS_ERROR;
+    } else {
+		rc = IOCLS_OK;
+	}
+	fprintf(stderr, "ca_context_create(): rc=%d, msg='%s'\n", rc, ca_message(rc));
+	fprintf(ioc_log_plogfile, "%s: ca_context_create(): rc=%d, msg='%s'\n", timestamp, rc, ca_message(rc));	
+
+	return rc;
 }
 
 
@@ -936,7 +955,7 @@ static void getThrottleTimestamp(char *appTimestamp, char* throttleTimestamp, in
 	time.tm_min = 0;
 	time.tm_sec = tseconds;
 	mktime(&time);
-	strftime(throttleTimestamp, sizeof(throttleTimestamp), "%d-%b-%Y %H:%M:%S", &time);	
+	strftime(throttleTimestamp, ASCII_TIME_SIZE, "%d-%b-%Y %H:%M:%S", &time);	
 	printf(" throttleSeconds=%d, appTimestamp='%s', throttleTimestamp='%s'\n", throttleSeconds, appTimestamp, throttleTimestamp);
 }
 
@@ -1258,6 +1277,10 @@ static int parseTags(int nchar, char *hostIn, char *timeIn, char *text, char *ti
 	} else {
 		*timeDef = 0;
 		printf("app timestamp defined, set timeDef=0\n");
+		/* start TESTING 
+		printf("ERROR!!!  CHANGE BACK TO *timeDef=0\n");
+		*timeDef=1; strcpy(timeApp, timeIn); /* always copy logserver_timestamp to app_timestamp for TESTING, delete when finished TESTING 
+		 END TESTING */
 	}
 
 	return ncharStripped;
