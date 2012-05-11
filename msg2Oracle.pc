@@ -96,6 +96,9 @@ int db_connect(server)
     EXEC SQL BEGIN DECLARE SECTION;
 /*    char userid[] = "ERRLOG_OWNER/DE2B_USSY@"; */
 	char userid[100];
+	char buff[100];
+
+/*	sprintf(buff */
 
     EXEC SQL END DECLARE SECTION;
 
@@ -108,6 +111,9 @@ int db_connect(server)
     EXEC SQL CONNECT :userid; 
 
     EXEC SQL WHENEVER SQLERROR CONTINUE;
+
+	EXEC SQL ALTER SESSION SET COMMIT_WRITE='BATCH,NOWAIT';  
+/*	EXEC SQL ALTER SESSION SET COMMIT_WRITE='IMMEDIATE,WAIT'; */
 
     curr_status = g_status;
 
@@ -223,6 +229,7 @@ printf ("logServer_ascii_time: %s app_ascii_time: %s\n", logServer_ascii_time, a
 
 /* TESTING THE ERROR REPORTING! */
 
+
     EXEC SQL INSERT INTO message_log (program_name,
                                  facility_name,
                                  severity,
@@ -258,12 +265,12 @@ printf ("logServer_ascii_time: %s app_ascii_time: %s\n", logServer_ascii_time, a
                                 )
                 LOG ERRORS INTO MESSAGE_LOG_ERRORS
               REJECT LIMIT UNLIMITED;
-/*
+
     if ( commit_flag )
     {
       EXEC SQL COMMIT WORK;
     }
-*/
+
     EXEC SQL WHENEVER SQLERROR CONTINUE;
 
     curr_status = g_status;

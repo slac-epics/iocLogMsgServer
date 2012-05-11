@@ -1,4 +1,4 @@
-/* MessageLogging_TestStandHello.h 
+/* MessageLogging_TestStandHello.h */
 /* Just used for stress testing iocLogMsgServer and Oracle db, not part of log server code */
 
 #ifndef IOCLOGMSGSERVER_H
@@ -120,12 +120,13 @@ extern void sendMessagesTest(int nrows);
 
 static void acceptNewClient (void *pParam);
 static void readFromClient(void *pParam);
-static void getTimestamp (char *timestamp);
+static void getTimestamp (char *timestamp, int len);
 /*static char *getTimestamp(); */
 static int getConfig(void);
-static int openLogFile(struct ioc_log_server *pserver);
-static int openLogFileNew();
-static int checkLogFileNew();
+static int openLogFileOld(struct ioc_log_server *pserver);
+static int checkLogFileOld(struct ioc_log_server *pserver);
+static int openLogFile();
+static int checkLogFile();
 static void envFailureNotify(const ENV_PARAM *pparam);
 static void freeLogClient(struct iocLogClient *pclient);
 static void parseMessages(struct iocLogClient *pclient);
