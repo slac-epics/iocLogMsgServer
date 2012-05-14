@@ -83,8 +83,8 @@ int main(int argc, char* argv[]) {
 	struct ioc_log_server *pserver;
 	int i;
 	char buff[256];
-	char throttleSecondsPv[100];
-	char throttleFieldsPv[100];
+//	char throttleSecondsPv[100];
+//	char throttleFieldsPv[100];
 	osiSockIoctl_t	optval;
 	char timestamp[ASCII_TIME_SIZE];
 
@@ -104,12 +104,12 @@ int main(int argc, char* argv[]) {
 		/* get throttle seconds pv */
 		strcpy(buff, "throttleSecondsPv=");
 		if (strncmp(argv[i], buff, strlen(buff)) == 0) {
-			strcpy(throttleSecondsPv, argv[i]+strlen(buff));
+			strcpy(ioc_log_throttleSecondsPv, argv[i]+strlen(buff));
 		}
 		/* get throttle fields pv */
 		strcpy(buff, "throttleFieldsPv=");
 		if (strncmp(argv[i], buff, strlen(buff)) == 0) {
-			strcpy(throttleFieldsPv, argv[i]+strlen(buff));
+			strcpy(ioc_log_throttleFieldsPv, argv[i]+strlen(buff));
 		}
 		/* get test directory */
 		strcpy(buff, "testdir=");
@@ -135,10 +135,10 @@ int main(int argc, char* argv[]) {
 
 	/* initialize variables */
 	initGlobals();
-	strcpy(throttleSecondsPv, "SIOC:SYS0:AL00:THROTTLE_SECONDS");
-	strcpy(throttleFieldsPv, "SIOC:SYS0:AL00:THROTTLE_FIELDS");
+	strcpy(ioc_log_throttleSecondsPv, "SIOC:SYS0:AL00:THROTTLE_SECONDS");
+	strcpy(ioc_log_throttleFieldsPv, "SIOC:SYS0:AL00:THROTTLE_FIELDS");
 
-	printf("ioc_log_program_name=%s\nthrottleSecondsPv=%s\nthrottleFieldsPv=%s\n", ioc_log_programName, throttleSecondsPv, throttleFieldsPv);
+	printf("ioc_log_program_name=%s\nioc_log_throttleSecondsPv=%s\nioc_log_throttleFieldsPv=%s\n", ioc_log_programName, ioc_log_throttleSecondsPv, ioc_log_throttleFieldsPv);
 
 	status = getConfig();
 	if(status<0){
@@ -254,7 +254,7 @@ printf("Sending %d messages\n", ntestrows);
 	}
 */
 	getTimestamp(timestamp, sizeof(timestamp));
-	fprintf(ioc_log_plogfile, "%s: ioc_log_programName=%s, throttleSecondsPv=%s, throttleFieldsPv=%s\n", timestamp, ioc_log_programName, throttleSecondsPv, throttleFieldsPv);
+	fprintf(ioc_log_plogfile, "%s: ioc_log_programName=%s, throttleSecondsPv=%s, throttleFieldsPv=%s\n", timestamp, ioc_log_programName, ioc_log_throttleSecondsPv, ioc_log_throttleFieldsPv);
 
 	status = fdmgr_add_callback(
 			pserver->pfdctx, 
@@ -288,8 +288,8 @@ printf("Sending %d messages\n", ntestrows);
 	/* setup chchannel access pv monitoring for logserver throttle settings */
 	status = caStartChannelAccess();
 	if (status == IOCLS_OK) {
-		caStartMonitor(throttleSecondsPv, &ioc_log_caThrottleSecondsPvType);
-		caStartMonitor(throttleFieldsPv, &ioc_log_caThrottleFieldsPvType);
+		caStartMonitor(ioc_log_throttleSecondsPv, &ioc_log_throttleSecondsPvType);
+		caStartMonitor(ioc_log_throttleFieldsPv, &ioc_log_throttleFieldsPvType);
 	}
 	printf("PV Monitoring:\nioc_log_programName=%s\nioc_log_throttleSeconds=%d\nioc_log_throttleFields=%d\n", ioc_log_programName, ioc_log_throttleSeconds, ioc_log_throttleFields);
 	fprintf(ioc_log_plogfile, "PV Monitoring:	 ioc_log_programName=%s, ioc_log_throttleSeconds=%d, ioc_log_throttleFields=%d\n", ioc_log_programName, ioc_log_throttleSeconds, ioc_log_throttleFields);
@@ -775,16 +775,16 @@ printf("caEventHandler()\n");
 	if (args.status == ECA_NORMAL) {
 		printf("event dbr=%i\n", *((int*)args.dbr));
 		pvtype = (int *)ca_puser(args.chid);
-		if (pvtype == &ioc_log_caThrottleSecondsPvType) {
+		if (pvtype == &ioc_log_throttleSecondsPvType) {
 			printf("event for throttle seconds pvtype\n");
 			ioc_log_throttleSeconds = *((int*)args.dbr);
-			fprintf(ioc_log_plogfile, "%s: CA EVENT ioc_log_throttleSeconds=%d\n", timestamp, ioc_log_throttleSeconds);
-			printf("%s: CA event: ioc_log_throttleSeconds=%d\n", timestamp, ioc_log_throttleSeconds);
-		} else if (pvtype == &ioc_log_caThrottleFieldsPvType) {
+			fprintf(ioc_log_plogfile, "%s: CA EVENT for %s, ioc_log_throttleSeconds=%d\n", timestamp, ioc_log_throttleSecondsPv, ioc_log_throttleSeconds);
+			printf("%s: CA EVENT for %s, ioc_log_throttleSeconds=%d\n", timestamp, ioc_log_throttleSecondsPv, ioc_log_throttleSeconds);
+		} else if (pvtype == &ioc_log_throttleFieldsPvType) {
 			printf("event for throttle fields pvtype\n");
 			ioc_log_throttleFields = *((int*)args.dbr);
-			fprintf(ioc_log_plogfile, "%s: CA EVENT ioc_log_throttleFields=%d\n", timestamp, ioc_log_throttleFields);
-			printf("%s: CA event: ioc_log_throttleFields=%d\n", timestamp, ioc_log_throttleFields);
+			fprintf(ioc_log_plogfile, "%s: CA EVENT for %s, ioc_log_throttleFields=%d\n", timestamp, ioc_log_throttleFieldsPv, ioc_log_throttleFields);
+			printf("%s: CA EVENT for %s, ioc_log_throttleFields=%d\n", timestamp, ioc_log_throttleFieldsPv, ioc_log_throttleFields);
 		}
 	}
 
@@ -802,17 +802,19 @@ void caConnectionHandler(struct connection_handler_args args)
 printf("caConnectionHandler()\n");
 	pvtype = (int *)ca_puser(args.chid);
 printf("pvtype=%p\n", pvtype);
-	if (pvtype == &ioc_log_caThrottleSecondsPvType) {
+	fprintf(ioc_log_plogfile, "==============================================================\n");
+	if (pvtype == &ioc_log_throttleSecondsPvType) {
 		printf("PV_THROTTLE_SECONDS type\n");
+		fprintf(ioc_log_plogfile, "%s: %s\n", timestamp, ioc_log_throttleSecondsPv);
 		dbtype = DBR_INT;
-	} else if (pvtype == &ioc_log_caThrottleFieldsPvType) {
+	} else if (pvtype == &ioc_log_throttleFieldsPvType) {
 		printf("PV_THROTTLE_FIELDS type\n");
+		fprintf(ioc_log_plogfile, "%s: %s\n", timestamp, ioc_log_throttleFieldsPv);
 		dbtype = DBR_INT;
 	}
 
 	if (args.op == CA_OP_CONN_UP) {
 		printf("\nmonitor STARTED\n");
-		fprintf(ioc_log_plogfile, "==========================================================\n");
 		fprintf(ioc_log_plogfile, "%s: MONITOR started for pvtype=%p\n", timestamp, pvtype);
 		/* start monitor */
 /*		rc = ca_create_subscription(dbtype, 1, args.chid, DBE_VALUE, (caCh*)caEventHandler, &pvtype, NULL); */
@@ -825,7 +827,7 @@ printf("pvtype=%p\n", pvtype);
 		fprintf(ioc_log_plogfile, "%s: ERROR CA connection not established for pvtype=%p ", timestamp, pvtype);
 	}
 
-	fprintf(ioc_log_plogfile, "==========================================================\n");
+	fprintf(ioc_log_plogfile, "==============================================================\n");
 }
 
 /* setupPVMonitors 
@@ -834,7 +836,7 @@ printf("pvtype=%p\n", pvtype);
 static int caStartMonitor(char *pvname, int *pvtype)
 {
 	int rc;
-	int priority=50;
+	int priority=80;
 /*	int timeout=10; */
 	chid chanid;
 	char timestamp[ASCII_TIME_SIZE];

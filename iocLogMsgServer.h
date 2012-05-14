@@ -64,10 +64,11 @@ static int ioc_log_throttleFields;
 static char ioc_log_testDirectory[500];  /* oracle testing */
 static FILE *ioc_log_plogfile;           /* pointer to log file handler */
 
-
+static char ioc_log_throttleSecondsPv[100];
+static char ioc_log_throttleFieldsPv[100];
 /* Channel Access pv type hooks */
-static int ioc_log_caThrottleSecondsPvType;
-static int ioc_log_caThrottleFieldsPvType;
+static int ioc_log_throttleSecondsPvType;
+static int ioc_log_throttleFieldsPvType;
 
 #define IOCLS_ERROR (-1)
 #define IOCLS_OK 0
