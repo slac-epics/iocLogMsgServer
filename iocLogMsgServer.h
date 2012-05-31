@@ -59,17 +59,21 @@ static long ioc_log_fileLimit;
 static char ioc_log_fileName[256];
 static char ioc_log_fileCommand[256];
 static char ioc_log_programName[10];
-static int ioc_log_throttleSeconds;
-static int ioc_log_throttleFields;
+int ioc_log_throttleSeconds;
+int ioc_log_throttleFields;
 static char ioc_log_testDirectory[500];  /* oracle testing */
 static FILE *ioc_log_plogfile;           /* pointer to log file handler */
+static char ioc_log_hostname[100];
 
 static char ioc_log_throttleSecondsPv[100];
 static char ioc_log_throttleFieldsPv[100];
 /* Channel Access pv type hooks */
 static int ioc_log_throttleSecondsPvType;
 static int ioc_log_throttleFieldsPvType;
+//int ioc_log_debug;
+int ioc_log_commitCount;
 
+#define ioc_log_debug 0
 #define IOCLS_ERROR (-1)
 #define IOCLS_OK 0
 
@@ -85,20 +89,22 @@ static int ioc_log_throttleFieldsPvType;
 #define THROTTLE_MSG_SIZE 2001
 #define MSG_CODE_SIZE 257
 
-#define THROTTLE_MSG         1 << 0    /* 1 */
-#define THROTTLE_FACILITY    1 << 1    /* 2 */
-#define THROTTLE_SEVERITY    1 << 2    /* 4 */
-#define THROTTLE_CODE        1 << 3    /* 8 */
-#define THROTTLE_HOST        1 << 4    /* 16 */
-#define THROTTLE_USER        1 << 5    /* 32 */
-#define THROTTLE_STATUS      1 << 6    /* 64 */
-#define THROTTLE_PROCESS     1 << 7    /* 128 */
+#define THROTTLE_PROGRAM     1 << 0    /* 1 */
+#define THROTTLE_MSG         1 << 1    /* 2 */
+#define THROTTLE_FACILITY    1 << 2    /* 4 */
+#define THROTTLE_SEVERITY    1 << 3    /* 8 */
+#define THROTTLE_CODE        1 << 4    /* 16 */
+#define THROTTLE_HOST        1 << 5    /* 32 */
+#define THROTTLE_USER        1 << 6    /* 64 */
+#define THROTTLE_STATUS      1 << 7    /* 128 */
+#define THROTTLE_PROCESS     1 << 8    /* 256 */
 
 struct iocLogClient {
 	int insock;
 	struct ioc_log_server *pserver;
 	size_t nChar;
-	char recvbuf[1024];
+	char recvbuf[1024]; 
+/*	char recvbuf[256]; */
 	char name[NAME_SIZE];
 /*	char ascii_time[NAME_SIZE]; */
 	char ascii_time[ASCII_TIME_SIZE];
@@ -118,7 +124,6 @@ struct ioc_log_server {
 extern void parseMessagesTest(const char *directory);
 extern void sendMessagesTest(int nrows);
 
-
 static void acceptNewClient (void *pParam);
 static void readFromClient(void *pParam);
 static void getTimestamp (char *timestamp, int len);
@@ -131,8 +136,7 @@ static int checkLogFile();
 static void envFailureNotify(const ENV_PARAM *pparam);
 static void freeLogClient(struct iocLogClient *pclient);
 static void parseMessages(struct iocLogClient *pclient);
-static int parseTags(int nchar, char *hostIn, char *timeIn, char *text, char *timeApp,  char *status, char *severity, 
-                     char *facility, char *host, char *code, char *process, char *user, int *timeDef);
+static int parseTags(int nchar, char *hostIn, char *text, char *timeApp,  char *status, char *severity, char *facility, char *host, char *code, char *process, char *user, int *timeDef);
 static int hasNextTag(char *text, char *found);
 static void getThrottleTimestamp(char *appTimestamp, char* throttleTimestamp, int throttleSeconds);
 static void getThrottleString(char *msg, char *system, char *severity, char *code, char *host, char *user, char *status, char *process, char *throttleString, int throttleStringMask);
