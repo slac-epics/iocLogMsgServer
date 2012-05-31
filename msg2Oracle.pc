@@ -14,11 +14,11 @@
 */
 
 
-#include <stdio.h> 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sqlca.h>
-#include <oraca.h> 
+#include <oraca.h>
 
 #define  DEBUG 0
 #define  MOD_SUCCESS 1
@@ -26,10 +26,7 @@
 
 int  g_status;
 
-/* JROCK screwing around!  will develop error handling further later
-EXEC SQL INCLUDE SQLCA;
-#define SQLCA 1
-*/
+/* JROCK screwing around!  will develop error handling further later EXEC SQL INCLUDE SQLCA; #define SQLCA 1 */
 
 EXEC SQL BEGIN DECLARE SECTION;
   char  SQLSTATE[6];
@@ -42,17 +39,16 @@ long SQLCODE;
 
 void sql_error(errmsg)
     char *errmsg;
-{ 
+{
     char buf[6];
 
     strcpy(buf, SQLSTATE);
-    EXEC SQL WHENEVER SQLERROR CONTINUE; 
+    EXEC SQL WHENEVER SQLERROR CONTINUE;
 
 /* jrock - playing around
    did not get sqlca working (err message, but it's bs!)
       sqlca.sqlerrm.sqlerrmc[sqlca.sqlerrm.sqlerrml] = '\0';
-      printf("\n%s, sqlstate is %s; sqlcaerrm is %s\n\n", errmsg, buf, sqlca.sqlerrm.sqlerrmc);
-*/
+      printf("\n%s, sqlstate is %s; sqlcaerrm is %s\n\n", errmsg, buf, sqlca.sqlerrm.sqlerrmc); */
 
     if (strncmp(errmsg, "Oracle Error", 12) == 0)
     {
@@ -63,18 +59,18 @@ void sql_error(errmsg)
       printf("\n%s\n\n", errmsg);
     }
 
-    printf("Last SQL statement: %.*s\n", oraca.orastxt.orastxtl, oraca.orastxt.orastxtc); 
+    printf("Last SQL statement: %.*s\n", oraca.orastxt.orastxtl, oraca.orastxt.orastxtc);
 
     if ( DEBUG )
     {
-      printf("\nAt or near line number %d\n", oraca.oraslnr); 
-      printf("\nCursor Cache Statistics\n------------------------\n"); 
-      printf("Maximum value of MAXOPENCURSORS:    %d\n", oraca.orahoc); 
-      printf("Maximum open cursors required:      %d\n", oraca.oramoc); 
-      printf("Current number of open cursors:     %d\n", oraca.oracoc); 
-      printf("Number of cache reassignments:      %d\n", oraca.oranor); 
-      printf("Number of SQL statement parses:     %d\n", oraca.oranpr); 
-      printf("Number of SQL statement executions: %d\n", oraca.oranex); 
+      printf("\nAt or near line number %d\n", oraca.oraslnr);
+      printf("\nCursor Cache Statistics\n------------------------\n");
+      printf("Maximum value of MAXOPENCURSORS:    %d\n", oraca.orahoc);
+      printf("Maximum open cursors required:      %d\n", oraca.oramoc);
+      printf("Current number of open cursors:     %d\n", oraca.oracoc);
+      printf("Number of cache reassignments:      %d\n", oraca.oranor);
+      printf("Number of SQL statement parses:     %d\n", oraca.oranpr);
+      printf("Number of SQL statement executions: %d\n", oraca.oranex);
     }
 
     EXEC SQL ROLLBACK WORK RELEASE;
@@ -82,38 +78,35 @@ void sql_error(errmsg)
     g_status = MOD_FAILURE;
 
     return;
-} 
+}
 
 /* ------------------------------------------------------------ */
 
 int db_connect(server)
     char server[31];
-{ 
+{
     int curr_status = 0;
 
     g_status = MOD_SUCCESS;
 
     EXEC SQL BEGIN DECLARE SECTION;
 /*    char userid[] = "ERRLOG_OWNER/DE2B_USSY@"; */
-	char userid[100];
-	char buff[100];
-
-/*	sprintf(buff */
+        char userid[100];
 
     EXEC SQL END DECLARE SECTION;
 
-/*	strcpy(userid, "ERRLOG_OWNER/DE2B_USSY@");*/
-	strcpy(userid, "message_logger/asorry17cents:@");
+/*      strcpy(userid, "ERRLOG_OWNER/DE2B_USSY@");*/
+        strcpy(userid, "message_logger/asorry17cents:@");
     strcat(userid, server);
 
     EXEC SQL WHENEVER SQLERROR DO sql_error("CONNECT ERROR");
 
-    EXEC SQL CONNECT :userid; 
+    EXEC SQL CONNECT :userid;
 
     EXEC SQL WHENEVER SQLERROR CONTINUE;
 
-	EXEC SQL ALTER SESSION SET COMMIT_WRITE='BATCH,NOWAIT';  
-/*	EXEC SQL ALTER SESSION SET COMMIT_WRITE='IMMEDIATE,WAIT'; */
+/*        EXEC SQL ALTER SESSION SET COMMIT_WRITE='BATCH,NOWAIT'; */
+      EXEC SQL ALTER SESSION SET COMMIT_WRITE='IMMEDIATE,NOWAIT'; 
 
     curr_status = g_status;
 
@@ -147,7 +140,7 @@ int db_insert(msglog_id,
               msg,
               logServer_ascii_time,
               app_ascii_time,
-              throttle_ascii_time,	
+              throttle_ascii_time,     
               app_timestamp_def,
               msg_code,
               hostnode,
@@ -161,20 +154,20 @@ int db_insert(msglog_id,
   EXEC SQL BEGIN DECLARE SECTION;
     int  msglog_id;
 /*    int  logserver_id; */
-	char program_name[11];
+        char program_name[11];
     char facility_name[41];
-    char severity[21]; 
+    char severity[21];
     char msg[681];
     char logServer_ascii_time[31];
     char app_ascii_time[31];
     char throttle_ascii_time[31];
     int app_timestamp_def;
 /*    int  err_code; */
-	char msg_code[257];
+        char msg_code[257];
     char hostnode[41];
     char user_name[41];
 /*    int  status; */
-	char status[21];
+        char status[21];
     char process_name[41];
     long msg_count;
     char throttle_parameter[2001];
@@ -183,7 +176,7 @@ int db_insert(msglog_id,
 
   EXEC SQL VAR  msglog_id IS INTEGER;
 /*  EXEC SQL VAR  logserver_id IS INTEGER; */
-  EXEC SQL VAR program_name IS STRING(11); 
+  EXEC SQL VAR program_name IS STRING(11);
   EXEC SQL VAR facility_name IS STRING(41);
   EXEC SQL VAR severity IS STRING(21);
   EXEC SQL VAR msg IS STRING(681);
@@ -196,12 +189,11 @@ int db_insert(msglog_id,
   EXEC SQL VAR hostnode IS STRING(41);
   EXEC SQL VAR user_name IS STRING(41);
 /*  EXEC SQL VAR status IS INTEGER; */
-  EXEC SQL VAR status IS STRING(21); 
+  EXEC SQL VAR status IS STRING(21);
   EXEC SQL VAR process_name IS STRING(41);
   EXEC SQL VAR msg_count IS INTEGER;
-  EXEC SQL VAR throttle_parameter IS STRING(2001);
-{
-    
+  EXEC SQL VAR throttle_parameter IS STRING(2001); {
+   
     int curr_status = 0;
 
     g_status = MOD_SUCCESS;
@@ -219,24 +211,24 @@ int db_insert(msglog_id,
 
     EXEC SQL WHENEVER SQLERROR DO sql_error("INSERT ERROR");
 
-/* default app_time and orig_time - altho this may slow things down 
-*/
-printf ("logServer_ascii_time: %s app_ascii_time: %s\n", logServer_ascii_time, app_ascii_time); 
+/* default app_time and orig_time - altho this may slow things down */ 
+	/* printf ("logServer_ascii_time: %s app_ascii_time: %s\n", logServer_ascii_time, app_ascii_time); */
 
-/* will need this, but for now use the sequence 
-    EXEC SQL INSERT INTO errlog (errlog_id,
-*/
+/* will need this, but for now use the sequence
+    EXEC SQL INSERT INTO errlog (errlog_id, */
 
 /* TESTING THE ERROR REPORTING! */
 
 
-    EXEC SQL INSERT INTO message_log (program_name,
+/*    EXEC SQL INSERT INTO message_log (msglog_id,*/
+    EXEC SQL INSERT INTO message_log_part (msglog_id,
+	                             program_name,
                                  facility_name,
                                  severity,
                                  msg,
                                  logServer_timestamp,
                                  app_timestamp,
-                                 throttle_timestamp, 
+                                 throttle_timestamp,
                                  app_timestamp_def,
                                  msg_code,
                                  hostnode,
@@ -244,16 +236,20 @@ printf ("logServer_ascii_time: %s app_ascii_time: %s\n", logServer_ascii_time, a
                                  status,
                                  process_name,
                                  msg_count,
-                                 throttle_parameter
+                                 throttle_parameter,
+                                 created_by,              /* remove?? */
+                                 created_date,            /* remove?? */ 
+                                 ora_timestamp
                                     )
-                         VALUES (:program_name,
+                         VALUES (message_log_seq.nextval,
+                                 :program_name,
                                  :facility_name,
                                  :severity,
                                  :msg,
 /*                                 to_timestamp(:logServer_ascii_time, 'DY MON DD HH24:MI:SS.FF YYYY'), */
-                                 to_timestamp(:logServer_ascii_time, 'DD-MON-YYYY HH24:MI:SS.FF'), 
+                                 to_timestamp(:logServer_ascii_time, 'DD-MON-YYYY HH24:MI:SS.FF'),
                                  to_timestamp(:app_ascii_time, 'DD-MON-YYYY HH24:MI:SS.FF'),
-                                 to_timestamp(:throttle_ascii_time, 'DD-MON-YYYY HH24:MI:SS.FF'), 
+                                 to_timestamp(:throttle_ascii_time, 'DD-MON-YYYY HH24:MI:SS.FF'),
                                  :app_timestamp_def,
                                  :msg_code,
                                  :hostnode,
@@ -261,10 +257,15 @@ printf ("logServer_ascii_time: %s app_ascii_time: %s\n", logServer_ascii_time, a
                                  :status,
                                  :process_name,
                                  :msg_count,
-                                 :throttle_parameter
+                                 :throttle_parameter,
+                                 'iocLogMsgServer',
+                                 sysdate,
+                                 systimestamp
                                 )
-                LOG ERRORS INTO MESSAGE_LOG_ERRORS
+/*                LOG ERRORS INTO MESSAGE_LOG_ERRORS */
+                LOG ERRORS INTO MESSAGE_LOG_PART_ERRORS 
               REJECT LIMIT UNLIMITED;
+
 
     if ( commit_flag )
     {
@@ -276,4 +277,4 @@ printf ("logServer_ascii_time: %s app_ascii_time: %s\n", logServer_ascii_time, a
     curr_status = g_status;
 
     return curr_status;
-} 
+}
