@@ -133,13 +133,7 @@ int main(int argc, char* argv[]) {
 
 	}
 
-	/* initialize variables */
-	initGlobals();
-	strcpy(ioc_log_throttleSecondsPv, "SIOC:SYS0:AL00:THROTTLE_SECONDS");
-	strcpy(ioc_log_throttleFieldsPv, "SIOC:SYS0:AL00:THROTTLE_FIELDS");
-
-	printf("ioc_log_program_name=%s\nioc_log_throttleSecondsPv=%s\nioc_log_throttleFieldsPv=%s\n", ioc_log_programName, ioc_log_throttleSecondsPv, ioc_log_throttleFieldsPv);
-
+	// get environment variables
 	status = getConfig();
 	if(status<0){
 		fprintf(stderr, "iocLogServer: EPICS environment underspecified\n");
@@ -147,8 +141,16 @@ int main(int argc, char* argv[]) {
 		return IOCLS_ERROR;
 	}
 
+	/* initialize variables */
+	initGlobals();
+
+	printf("ioc_log_program_name=%s\nioc_log_throttleSecondsPv=%s\nioc_log_throttleFieldsPv=%s\n", ioc_log_programName, ioc_log_throttleSecondsPv, ioc_log_throttleFieldsPv);
+
+
 	/* open log file */
-	status = openLogFile(); 
+//	status = openLogFile(); 
+	status = openLogFile2(ioc_log_fileName, &ioc_log_plogfile, ioc_log_fileLimit);
+	status = openLogFile2(ioc_log_verboseFileName, &ioc_log_pverbosefile, MAX_VERBOSE_FILESIZE);
 	getTimestamp(timestamp, sizeof(timestamp));
 	fprintf(ioc_log_plogfile, "\n\n========================================================================================================\n");
 	fprintf(ioc_log_plogfile, "%s: iocLogMsgServer STARTED on %s\n", timestamp, ioc_log_hostname);
@@ -159,7 +161,7 @@ int main(int argc, char* argv[]) {
 		caStartMonitor(ioc_log_throttleSecondsPv, &ioc_log_throttleSecondsPvType);
 		caStartMonitor(ioc_log_throttleFieldsPv, &ioc_log_throttleFieldsPvType);
 	}
-	printf("PV Monitoring:\nioc_log_programName=%s\nioc_log_throttleSeconds=%d\nioc_log_throttleFields=%d\n", ioc_log_programName, ioc_log_throttleSeconds, ioc_log_throttleFields);
+	fprintf(ioc_log_pverbosefile, "PV Monitoring:\nioc_log_programName=%s\nioc_log_throttleSeconds=%d\nioc_log_throttleFields=%d\n", ioc_log_programName, ioc_log_throttleSeconds, ioc_log_throttleFields);
 	fprintf(ioc_log_plogfile, "PV Monitoring:	 ioc_log_programName=%s, ioc_log_throttleSeconds=%d, ioc_log_throttleFields=%d\n", ioc_log_programName, ioc_log_throttleSeconds, ioc_log_throttleFields);
 
 
@@ -167,11 +169,11 @@ int main(int argc, char* argv[]) {
  	/* JROCK Connect to Oracle */
 	if (!db_connect("MCCODEV")) {	
 		getTimestamp(timestamp, sizeof(timestamp));
-        	fprintf(stderr, "%s\n", "iocLogMsgServer: Error connecting to Oracle\n");
+        fprintf(ioc_log_pverbosefile, "%s\n", "iocLogMsgServer: Error connecting to Oracle\n");
 		fprintf(ioc_log_plogfile, "%s: ERROR connecting to MCCODEV!\n", timestamp);
-	        return IOCLS_ERROR;
+	    return IOCLS_ERROR;
 	}
-	printf("connected!\n");
+	fprintf(stderr, "connected!\n");
 	fprintf(ioc_log_plogfile, "Successfully connected to MCCODEV\n");
 
 	/* RUN TEST */
@@ -190,7 +192,7 @@ printf("Sending %d messages\n", ntestrows);
 	pserver = (struct ioc_log_server *) 
 	calloc(1, sizeof *pserver);
 	if(!pserver){
-		fprintf(stderr, "iocLogServer: %s\n", strerror(errno));
+		fprintf(stderr,  "iocLogServer: %s\n", strerror(errno));
 		fprintf(ioc_log_plogfile, "iocLogServer: %s\n", strerror(errno));
 		return IOCLS_ERROR;
 	}
@@ -345,7 +347,7 @@ static void printHelp()
 	printf("    Process=256\n\n");
 }
 
-int isNumeric (const char * s)
+static int isNumeric (const char * s)
 {
     if (s == NULL || *s == '\0' || isspace(*s))
       return 0;
@@ -356,64 +358,37 @@ int isNumeric (const char * s)
 
 static void initGlobals()
 {
+	char *pch;
+
 	/* initialize globals */
-	strcpy(ioc_log_programName, "LCLS");  /* LCLS accelerator */	
 	ioc_log_throttleSeconds = 1;          /* 1 second */
 	ioc_log_throttleFields = 3;           /* program/accelerator and msg field */
+	strcpy(ioc_log_throttleSecondsPv, "SIOC:SYS0:AL00:THROTTLE_SECONDS");
+	strcpy(ioc_log_throttleFieldsPv, "SIOC:SYS0:AL00:THROTTLE_FIELDS");
+
 	strcpy(ioc_log_testDirectory, "");
 
 	/* get hostname */
 	gethostname(ioc_log_hostname, sizeof(ioc_log_hostname));
 	printf("hostname=%s\n", ioc_log_hostname);
+
+	// set default program 
+	strcpy(ioc_log_programName, "LCLS");  /* LCLS accelerator */	
 	
 	ioc_log_commitCount=0;
-//	ioc_log_debug=0;
+	ioc_log_prawdatafile = NULL;
+	ioc_log_plogfile = NULL;
+	ioc_log_pverbosefile = NULL;
+
+printf("here %s\n", ioc_log_fileName);	
+	// define verbose file name
+	pch=strrchr(ioc_log_fileName,'\\/');
+	strncpy(ioc_log_verboseFileName, ioc_log_fileName, pch - ioc_log_fileName + 1);
+	strcat(ioc_log_verboseFileName, "output.log");
+	fprintf(stderr, "ioc_log_verboseFileName = %s\n", ioc_log_verboseFileName);
+
 }
 
-/* checkLogFileOld()
-// checks file size and copies to <logfile>.log.bak if too big
-*/
-static int checkLogFileOld(struct ioc_log_server *pserver)
-{
-	int fileSize=0;
-	char newname[256];
-	int rc=IOCLS_OK;
-	int rrc = 0;
-
-	if (pserver->poutfile) {
-		fflush(pserver->poutfile);
-	}
-
-	/* get file size */
-	fseek(pserver->poutfile, 0, SEEK_END);
-	fileSize = ftell(pserver->poutfile);
-
-	/* check if file is too big */
-/*	if (fileSize > pserver->max_file_size) { */
-	if (fileSize > ioc_log_fileLimit) {
-		fprintf(pserver->poutfile, "Logfile too big %d, Rename %s to %s\n", fileSize, pserver->outfile, newname);
-		fclose(pserver->poutfile);
-		strcpy(newname, pserver->outfile);
-		strcat(newname, ".bak");
-		printf("Logfile too big %d, Rename %s to %s\n", fileSize, pserver->outfile, newname);
-		rrc = rename(ioc_log_fileName, newname);
-		if (rrc != 0) printf("ERROR renaming %s to %s, rc=%d\n", pserver->outfile, newname, rrc); /* don't return error, hopefully renaming works later */
-		
-		/* reset logfile file pointer */
-		pserver->poutfile = fopen(ioc_log_fileName, "a+");
-		if (!pserver->poutfile) {
-			pserver->poutfile = stderr;
-			rc = IOCLS_ERROR;
-			return rc;
-		}
-	}
-	
-	/* set file pos */
-    pserver->filePos = ftell(pserver->poutfile); 
-printf("pserver's filePos=%ld\n", pserver->filePos);
-
-	return rc;
-}
 
 /* checkLogFile()
 // checks file size and copies to <logfile>.log.bak if too big
@@ -460,6 +435,89 @@ printf("pserver's filePos=%ld\n", pserver->filePos);
 	return rc;
 }
 
+/* checkLogFile()
+// checks file size and copies to <logfile>.log.bak if too big
+*/
+static int checkLogFile2(char *filename, FILE* pfile, int maxsize)
+{
+	int fileSize=0;
+	char newname[256];
+	int rc=IOCLS_OK;
+	int rrc = 0;
+	char timestamp[ASCII_TIME_SIZE];
+
+	if (pfile) {
+		fflush(pfile);
+	}
+
+	/* get file size */
+	fseek(pfile, 0, SEEK_END);
+	fileSize = ftell(pfile);
+
+	//fprintf(ioc_log_plogfile, "%s filesize=%d, maxsize=%d\n", filename, fileSize, maxsize);
+
+	/* check if file is too big */
+/*	if (fileSize > pserver->max_file_size) { */
+	if (fileSize > maxsize) {
+		getTimestamp(timestamp, sizeof(timestamp));
+		fprintf(pfile, "%s: Logfile too big %d, Rename %s to %s\n", timestamp, fileSize, filename, newname);
+		fclose(pfile);
+		strcpy(newname, filename);
+		strcat(newname, ".bak");
+		fprintf(ioc_log_plogfile, "%s: Logfile too big %d, Rename %s to %s\n", timestamp, fileSize, filename, newname);
+		rrc = rename(filename, newname);
+		if (rrc != 0) fprintf(ioc_log_plogfile, "%s: ERROR renaming %s to %s, rc=%d\n", timestamp, filename, newname, rrc); /* don't return error, hopefully renaming works later */
+		
+		/* reset logfile file pointer */
+		pfile = fopen(filename, "a+");
+		if (!pfile) {
+			pfile = stderr;
+			rc = IOCLS_ERROR;
+			return rc;
+		}
+	}
+	
+	/* set file pos 
+    pserver->filePos = ftell(pserver->poutfile); 
+printf("pserver's filePos=%ld\n", pserver->filePos);
+*/
+	return rc;
+}
+
+/* raw data file is used to write backup data in case Oracle insert fails */
+int writeToRawDataFile(char *line)
+{
+	int rc = IOCLS_OK;
+	char date[ASCII_TIME_SIZE];
+	char *pch;
+	char directory[256];
+
+	getDate(date, sizeof(date));
+	fprintf(ioc_log_pverbosefile, "thedate = %s\n", date);
+
+	if (ioc_log_prawdatafile == NULL) {
+		pch=strrchr(ioc_log_fileName,'\\/');
+		strncpy(directory, ioc_log_fileName, pch - ioc_log_fileName + 1);
+		fprintf(ioc_log_pverbosefile, "directory=%s\n", directory);
+		strcpy(ioc_log_rawDataFileName, directory);
+		strcat(ioc_log_rawDataFileName, "raw_data_");
+		strcat(ioc_log_rawDataFileName, date);
+		strcat(ioc_log_rawDataFileName, ".txt");
+		fprintf(ioc_log_pverbosefile, "ioc_log_rawDataFileName = %s\n", ioc_log_rawDataFileName);
+	}
+
+	// open the file for appending
+	ioc_log_prawdatafile = fopen(ioc_log_rawDataFileName, "a+"); // open for appending, create if doesn't exist
+	if (ioc_log_prawdatafile == NULL) {
+		fprintf(ioc_log_pverbosefile, "******************\nERROR opening raw data file %s\n******************\n", ioc_log_rawDataFileName);
+		fprintf(ioc_log_plogfile, "******************\nERROR opening raw data file %s\n******************\n", ioc_log_rawDataFileName);		
+		return IOCLS_ERROR;
+	}
+
+	fprintf(ioc_log_prawdatafile, "%s\n", line);
+	return rc;
+}
+
 /*
  *	openLogFile()
  *  set ioc_log_plogfile file handler
@@ -494,21 +552,26 @@ printf("SET poutfile is NULL\n");
 		pserver->max_file_size = ioc_log_fileLimit; */
 		
 		/* try opening for reading and writing */
-		ioc_log_plogfile = fopen(ioc_log_fileName, "a+"); 
+		ioc_log_plogfile = fopen(ioc_log_fileName, "a+"); // open for appending, create if doesn't exist
 		if (ioc_log_plogfile) {
 			/* check logfile if logfile is too big and needs to be renamed */
 /*			checkLogFileOld(ioc_log_plogfile);  */
 			checkLogFile();
-		} else { /* file doesn't exit */
-			ioc_log_plogfile = fopen(ioc_log_fileName, "w+");  /* create file */
+		} else { // problem opening file
+			fprintf(stderr, "******************\nERROR opening logfile %s\n******************\n", ioc_log_fileName);
+			ioc_log_plogfile = stderr;
+			return IOCLS_ERROR;
+
+/*			ioc_log_plogfile = fopen(ioc_log_fileName, "w+");  // create file 
 			fclose (ioc_log_plogfile);
 			printf("opened and closed for write, to create new file\n");
-			ioc_log_plogfile = fopen(ioc_log_fileName, "a+");  /* open for append */
+			ioc_log_plogfile = fopen(ioc_log_fileName, "a+");  // open for append 
 			if (!ioc_log_plogfile) {
 				fprintf(stderr, "ERROR opening logfile %s\n", ioc_log_fileName);
 				ioc_log_plogfile = stderr;
 				return IOCLS_ERROR;
 			}
+*/
 		}
 /*        return seekLatestLine (pserver); */	
     } else {
@@ -524,59 +587,57 @@ printf("SET poutfile is NULL\n");
 }
 
 /*
- *	openLogFileOld()
+ *	openLogFile()
  *  set ioc_log_plogfile file handler
  * 
  * FIXME: does pserver need to be used for logfile now that Oracle is used??
  */
-static int openLogFileOld(struct ioc_log_server *pserver)
+static int openLogFile2(char *filename, FILE **pfile, int maxsize)
 {
 	int rc = IOCLS_OK;
 	char timestamp[ASCII_TIME_SIZE];
 
-	if (ioc_log_fileLimit==0u) {
-		pserver->poutfile = stderr;
-printf("ioc_log_fileLimit=0\n");
+	if (maxsize==0u) {
+		printf("ERROR: ioc_log_fileLimit=0\n");
 		return IOCLS_ERROR;
 	}
 
-	if (pserver->poutfile && pserver->poutfile != stderr){
+/*	if (pserver->poutfile && pserver->poutfile != stderr){ 
 		fclose (pserver->poutfile);
 		pserver->poutfile = NULL;
 printf("SET poutfile is NULL\n");
 	}
+*/
+	if (*pfile && *pfile != stderr) {
+		fclose(*pfile);
+		*pfile = NULL;
+		printf("Set %s file pointer to NULL\n", filename);
+	}
 
-    if (strlen(ioc_log_fileName) > 0) {
-		printf("********************LOG FILENAME is valid %s\n", ioc_log_fileName);
-		strcpy(pserver->outfile, ioc_log_fileName);
-		pserver->max_file_size = ioc_log_fileLimit;
+    if (strlen(filename) > 0) {
+		printf("********************LOG FILENAME is valid %s\n", filename);
 		
 		/* try opening for reading and writing */
-		pserver->poutfile = fopen(ioc_log_fileName, "a+"); 
-		if (pserver->poutfile) {
-			/* check logfile if logfile is too big and needs to be renamed */
-			checkLogFileOld(pserver);  
-		} else { /* file doesn't exit */
-			pserver->poutfile = fopen(ioc_log_fileName, "w+");  /* create file */
-			fclose (pserver->poutfile);
-			printf("opened and closed for write, to create new file\n");
-			pserver->poutfile = fopen(ioc_log_fileName, "a+");  /* open for append */
-			if (!pserver->poutfile) {
-				fprintf(stderr, "ERROR opening logfile %s\n", ioc_log_fileName);
-				pserver->poutfile = stderr;
-				return IOCLS_ERROR;
-			}
+		*pfile = fopen(filename, "a+"); // open for appending, create if doesn't exist
+		if (pfile) {
+			checkLogFile2(filename, *pfile, maxsize);
+		} else { // problem opening file
+			printf("******************\nERROR opening logfile %s\n******************\n", filename);
+			*pfile = stderr;
+			return IOCLS_ERROR;
 		}
-/*        return seekLatestLine (pserver); */	
-    }
-/*    return IOCLS_OK; */
-	printf("Successfully opened logfile %s\n", pserver->outfile);
-	getTimestamp(timestamp, sizeof(timestamp)); 
-	fprintf(pserver->poutfile, "\n%s: %s file opened\n", timestamp, ioc_log_fileName);	
-	ioc_log_plogfile = pserver->poutfile;
+    } else {
+		printf("INVALID log file name %s\n", filename);
+		return IOCLS_ERROR;
+	}
 
+	printf("Successfully opened logfile %s\n", filename);
+	getTimestamp(timestamp, sizeof(timestamp)); 
+printf("pfile=%d\n", *pfile);
+	fprintf(*pfile, "%s: %s file opened\n", timestamp, filename);
 	return rc;
 }
+
 
 /*
  *	acceptNewClient()
@@ -726,7 +787,9 @@ printf ("====>got from readFromClientn");
 
 	/* now's a good time to check log file size */
 /*	checkLogFile(pclient->pserver); */
-	checkLogFile();
+	// <FIXME:> implement a counter so not checking every time??	
+	checkLogFile2(ioc_log_fileName, ioc_log_plogfile, ioc_log_fileLimit);
+	checkLogFile2(ioc_log_verboseFileName, ioc_log_pverbosefile, MAX_VERBOSE_FILESIZE);
 
 	/* clear partial buffer in writeMessagesToLog, clearing entire buffer here inadvertently deletes last message */
 	/* try clearing pclient->recvbuf */
@@ -754,10 +817,7 @@ printf ("====>got from readFromClientn");
 				) {
                 char sockErrBuf[64];
                 epicsSocketConvertErrnoToString ( sockErrBuf, sizeof ( sockErrBuf ) );
-				fprintf(stderr, 
-		"%s:%d socket=%d size=%d read error=%s\n",
-					__FILE__, __LINE__, pclient->insock, 
-					size, sockErrBuf);
+				fprintf(ioc_log_pverbosefile, "%s:%d socket=%d size=%d read error=%s\n", __FILE__, __LINE__, pclient->insock, size, sockErrBuf);
 			}
 		}
 		/*
@@ -776,13 +836,14 @@ printf ("====>writing!\n");
 */
 /*	writeMessagesToLog (pclient); */
 
-printf("readFromClient incoming recvbuf  %s\n\n", pclient->recvbuf);
+	//printf("readFromClient incoming recvbuf  %s\n\n", pclient->recvbuf);
+	fprintf(ioc_log_pverbosefile, "readFromClient() incoming recvbuf\n");
 
 	parseMessages(pclient); 
 }
 
 
-void caEventHandler(evargs args)
+static void caEventHandler(evargs args)
 {
 printf("caEventHandler()\n");
 	int *pvtype;
@@ -792,21 +853,23 @@ printf("caEventHandler()\n");
 	if (args.status == ECA_NORMAL) {
 		pvtype = (int *)ca_puser(args.chid);
 		if (pvtype == &ioc_log_throttleSecondsPvType) {
-			printf("event for throttle seconds pvtype\n");
+			fprintf(ioc_log_pverbosefile, "event for throttle seconds pvtype\n");
 			ioc_log_throttleSeconds = *((int*)args.dbr);
 			fprintf(ioc_log_plogfile, "%s: CA EVENT for %s, ioc_log_throttleSeconds=%d\n", timestamp, ioc_log_throttleSecondsPv, ioc_log_throttleSeconds);
-			printf("%s: CA EVENT for %s, ioc_log_throttleSeconds=%d\n", timestamp, ioc_log_throttleSecondsPv, ioc_log_throttleSeconds);
+			fprintf(ioc_log_pverbosefile, "%s: CA EVENT for %s, ioc_log_throttleSeconds=%d\n", timestamp, ioc_log_throttleSecondsPv, ioc_log_throttleSeconds);
+			fprintf(stderr, "%s: CA EVENT for %s, ioc_log_throttleSeconds=%d\n", timestamp, ioc_log_throttleSecondsPv, ioc_log_throttleSeconds);
 		} else if (pvtype == &ioc_log_throttleFieldsPvType) {
-			printf("event for throttle fields pvtype\n");
+			fprintf(ioc_log_pverbosefile, "event for throttle fields pvtype\n");
 			ioc_log_throttleFields = *((int*)args.dbr);
 			fprintf(ioc_log_plogfile, "%s: CA EVENT for %s, ioc_log_throttleFields=%d\n", timestamp, ioc_log_throttleFieldsPv, ioc_log_throttleFields);
-			printf("%s: CA EVENT for %s, ioc_log_throttleFields=%d\n", timestamp, ioc_log_throttleFieldsPv, ioc_log_throttleFields);
+			fprintf(ioc_log_pverbosefile, "%s: CA EVENT for %s, ioc_log_throttleFields=%d\n", timestamp, ioc_log_throttleFieldsPv, ioc_log_throttleFields);
+			fprintf(stderr, "%s: CA EVENT for %s, ioc_log_throttleFields=%d\n", timestamp, ioc_log_throttleFieldsPv, ioc_log_throttleFields);
 		}
 	}
 
 }
 
-void caConnectionHandler(struct connection_handler_args args)
+static void caConnectionHandler(struct connection_handler_args args)
 {
 	int rc;
 	int dbtype;
@@ -931,7 +994,7 @@ static void getThrottleString(char *msg, char *facility, char *severity, char *c
 
 	memset(throttleString, '\0', THROTTLE_MSG_SIZE);
 
-	if (ioc_log_debug==1) printf(" throttleMask=%d, ", throttleStringMask);
+	fprintf(ioc_log_pverbosefile, " throttleMask=%d, ", throttleStringMask);
 
 	if (throttleStringMask & THROTTLE_PROGRAM) { strcpy(throttleString, ioc_log_programName); }
 	if (throttleStringMask & THROTTLE_MSG) { strcat(throttleString, msg); }
@@ -943,7 +1006,7 @@ static void getThrottleString(char *msg, char *facility, char *severity, char *c
 	if (throttleStringMask & THROTTLE_STATUS) { strcat(throttleString, status); }
 	if (throttleStringMask & THROTTLE_PROCESS) { strcat(throttleString, process); }
 
-	if (ioc_log_debug==1) printf(" throttleString='%s'\n", throttleString);
+	fprintf(ioc_log_pverbosefile, " throttleString='%s'\n", throttleString);
 }
 
 
@@ -961,7 +1024,7 @@ static void getThrottleTimestamp(char *appTimestamp, char* throttleTimestamp, in
 	int tseconds=0;
 	int remainder=0;
 
-	if (ioc_log_debug==1) printf("getThrottleTimestamp appTimestamp=%s\n", appTimestamp);
+	fprintf(ioc_log_pverbosefile,"getThrottleTimestamp appTimestamp=%s\n", appTimestamp);
 
 	/* if throttle seconds 0 or negative, set throttle timestamp to app timestamp */
 	if (throttleSeconds <= 0 ) {
@@ -996,12 +1059,15 @@ static void getThrottleTimestamp(char *appTimestamp, char* throttleTimestamp, in
 	time.tm_sec = tseconds;
 	mktime(&time);
 	strftime(throttleTimestamp, ASCII_TIME_SIZE, "%d-%b-%Y %H:%M:%S", &time);	
-	if (ioc_log_debug==1) printf(" throttleSeconds=%d, appTimestamp='%s', throttleTimestamp='%s'\n", throttleSeconds, appTimestamp, throttleTimestamp);
+	fprintf(ioc_log_pverbosefile," throttleSeconds=%d, appTimestamp='%s', throttleTimestamp='%s'\n", throttleSeconds, appTimestamp, throttleTimestamp);
 }
 
 /*
  * parseMessages()
  * parse iocLogClient recvbuff and process messages
+ * 1) Copy n complete messages into buffer
+ * 2) tokenizer buffer to separate individual message
+ * 3) parse individual message
  */
 static void parseMessages(struct iocLogClient *pclient)
 {
@@ -1036,39 +1102,38 @@ static void parseMessages(struct iocLogClient *pclient)
 	int commit=1;
 	int commitCount=1000;
 	char throttleString[THROTTLE_MSG_SIZE];
+	char logtimestamp[ASCII_TIME_SIZE];
 
-/*	printf("lineIndex=%d\n, nChar=%d\n", lineIndex, pclient->nChar);
-	printf("\nINCOMING recvbuf : %s\n", pclient->recvbuf);
-*/
 	end = pclient->nChar;
 	prevpch = pclient->recvbuf;
 	index=0;
 
+	// Get only complete messages, ignore last partial message
 	/* find last carriage return */
 	strncpy(buff, pclient->recvbuf, pclient->nChar);
 	for (i=0; i<pclient->nChar; i++) {
 		if (buff[i] == '\n') { /* found complete message */
 			lastCarriageReturnIndex=i;
-/*			printf("real carriage return\n"); */
-/*			printf("real onerow buff=%s\n", buff); */
-		} else if (strncmp(&buff[i-3], "\\n", 3) == 0) { /* weird \\n carriage return from iocsh */
-/*			printf("testing buff=%s\n", buff); */
-/*			printf("weird \\n carriage return from iocsh\n"); */
+			//printf("real onerow buff=%s\n", buff); 
+		} else if (strncmp(&buff[i-3], "\\n", 3) == 0) { /* weird \\n carriage return from iocsh, recognize it as a carriage return */
 			lastCarriageReturnIndex=i-2;			
 			buff[i-2]='\n';
-/*			printf("onerow buff=%s\n", buff); */
+			//printf("onerow buff=%s\n", buff); 
 		}
 	}
-/*	printf("lastCarriageReturnIndex=%d\n", lastCarriageReturnIndex); */
-	memset(buff, '\0', sizeof(buff));
 
+	// copy only complete messages into buffer
+	memset(buff, '\0', sizeof(buff));
 	strncpy(buff, pclient->recvbuf, lastCarriageReturnIndex);
-/*	printf("consolidated buffer=%s\n", buff); */
 
 	/* tokenize temp buffer to get individual messages */
 	pch = strtok(buff, "\n");
 	while (pch != NULL) {
-		printf("\n-------------------------\n");
+		// start handling single message
+		fprintf(ioc_log_pverbosefile, "\n-------------------------\n");
+		getTimestamp(logtimestamp, sizeof(logtimestamp));	
+		fprintf(ioc_log_pverbosefile, "%s: process single message\n", logtimestamp);
+
 		strcpy(onerow, pch);
 		isComplete=0;
 
@@ -1077,16 +1142,15 @@ static void parseMessages(struct iocLogClient *pclient)
 		/* get message attributes */
 		ncharStripped = parseTags(nchar, pclient->name, onerow, appTime, status, severity, system, host, code, process, user, &appTimeDef);
 
-/*		printf("ncharStripped=%d\n", ncharStripped); */
+		//printf("ncharStripped=%d\n", ncharStripped); 
 
 		/* get message text */
 		strncpy(text, &onerow[ncharStripped], rowlen-ncharStripped);
 		text[rowlen-ncharStripped] = 0;
 
-		if (ioc_log_debug==1) {
-			printf("text: '%s'\n", text);
-			printf("rowlen=%d\n", rowlen);
-		}
+		getTimestamp(logtimestamp, sizeof(logtimestamp));	
+		fprintf(ioc_log_pverbosefile, "%s: text='%s'\n", logtimestamp, text);
+		fprintf(ioc_log_pverbosefile, "rowlen=%d\n", rowlen);
 
 		/* format throttling timestamp */
 		getThrottleTimestamp(appTime, throttleTime, ioc_log_throttleSeconds);
@@ -1094,67 +1158,78 @@ static void parseMessages(struct iocLogClient *pclient)
 		/* format throttling string */
 		getThrottleString(text, system, severity, code, host, user, status, process, throttleString, ioc_log_throttleFields);
 		
-/*		printf("ioc_log_program_name=%s\n", ioc_log_program_name); */
+		//printf("ioc_log_program_name=%s\n", ioc_log_program_name); 
 		/* get logserver timestamp */
 		getTimestamp(pclient->ascii_time, sizeof(pclient->ascii_time)); 
-/*		printf("client ascii_time=%s\n", pclient->ascii_time); */
+		//printf("client ascii_time=%s\n", pclient->ascii_time); 
 
-/*		if (ioc_log_commitCount == commitCount) {
+		/*
+		if (ioc_log_commitCount == commitCount) {
 			commit=1;
-fprintf(ioc_log_plogfile, "commit=%d\n", commit);
+			fprintf(ioc_log_plogfile, "commit=%d\n", commit);
 		} else commit=0;
-*/
+		*/
+		getTimestamp(logtimestamp, sizeof(logtimestamp));	
+		fprintf(ioc_log_pverbosefile, "%s: START Oracle insert\n", logtimestamp);
 
 		rc = db_insert(0, ioc_log_programName, system, severity, text, pclient->ascii_time, appTime, throttleTime, appTimeDef,
 		               code, host, user, status, process, count, throttleString, commit); 
+
+		getTimestamp(logtimestamp, sizeof(logtimestamp));	
+		fprintf(ioc_log_pverbosefile, "%s: END Oracle insert\n", logtimestamp);
 		
 		if (rc == 1) {
 			/* printf("%s\n", "SUCCESSFUL INSERT INTO ERRLOG TABLE"); */
-			printf("Message from %s, %s\n", system, host);
-/*			rc = fprintf(ioc_log_plogfile, "%s: SUCCESS inserting %s\n", pclient->ascii_time, onerow);  */
+			fprintf(ioc_log_pverbosefile, "Message from %s, %s\n", system, host);
+			//rc = fprintf(ioc_log_plogfile, "%s: SUCCESS inserting %s\n", pclient->ascii_time, onerow);  
+			// close rawdata file if it's open
+			if (ioc_log_prawdatafile != NULL) { 
+				fprintf(ioc_log_plogfile, "%s: Closing %s\n", pclient->ascii_time, ioc_log_rawDataFileName);
+				fprintf(ioc_log_pverbosefile, "%s: Closing %s\n", pclient->ascii_time, ioc_log_rawDataFileName);
+				fclose(ioc_log_prawdatafile);
+				ioc_log_prawdatafile = NULL;
+			}
 		} else {
-			printf("ERROR INSERTING INTO ERRLOG TABLE, %s %s %s\n", system, host, text);
+			fprintf(ioc_log_pverbosefile, "ERROR INSERTING INTO ERRLOG TABLE, %s %s %s\n", system, host, text);
 			/* TODO: save entire message to data file for future processing */
-			printf("printing unsuccessful row : '%s'\n", onerow);
+			fprintf(ioc_log_pverbosefile, "printing unsuccessful row : '%s'\n", onerow);
 			rc = fprintf(ioc_log_plogfile, "%s: ERROR inserting %s\n", pclient->ascii_time, onerow);
+			writeToRawDataFile(onerow);		
 		}
-		
+
+
 		pch = strtok(NULL, "\n");
 		memset(onerow, '\0', THROTTLE_MSG_SIZE);
 		
-/*		if (ioc_log_commitCount > commitCount) {
+		/*if (ioc_log_commitCount > commitCount) {
 			ioc_log_commitCount=0;
 		}
-		ioc_log_commitCount++;
-*/	}
+		ioc_log_commitCount++; */
+	}
 
-	if (ioc_log_debug==1) printf("  DONE PARSING RECVBUF \n\n");
+	fprintf(ioc_log_pverbosefile, "  DONE PARSING RECVBUF \n\n");
 
-	/* clean up recvbuf */
-
-/*	printf("lastCarriageReturnIndex=%d\n, pclient->nChar=%d\n",lastCarriageReturnIndex, pclient->nChar); */
+	// clean up recvbuf 
+	// check if still have partial message remaining at end of recvbuff
+	// printf("lastCarriageReturnIndex=%d\n, pclient->nChar=%d\n",lastCarriageReturnIndex, pclient->nChar); 	
 	lastMsgLen= pclient->nChar - lastCarriageReturnIndex - 1;
 	/* handle truncated message */
 	/* make sure this is a truncated message with no "\n" and not just end of clean recvbuf */
-/*	if (pch!=NULL && isComplete==0) { */
-	if (lastMsgLen > 0) { /* shift partial message to front of recvbuf */
-/*
-printf("\n\npartial message remaining, lastCarriageReturnIndex=%d, nChar=%d \n", lastCarriageReturnIndex, pclient->nChar);
-printf("  PARTIAL message='%s'\n",&pclient->recvbuf[lastCarriageReturnIndex]);
-*/
+	if (lastMsgLen > 0) { /* shift partial message to front of recvbuf */	
+		//printf("\n\npartial message remaining, lastCarriageReturnIndex=%d, nChar=%d \n", lastCarriageReturnIndex, pclient->nChar);
+		//printf("  PARTIAL message='%s'\n",&pclient->recvbuf[lastCarriageReturnIndex]);
 		memmove(pclient->recvbuf, &pclient->recvbuf[lastCarriageReturnIndex], lastMsgLen+1);  /* move incomplete entry to beginning */
 		memset(&pclient->recvbuf[lastMsgLen+1], '\0', sizeof(pclient->recvbuf)-(lastMsgLen+1)); /* clear rest of buffer */
 		pclient->nChar=lastMsgLen+1;
-	} else { /* clear entire recbuf */
+	} else { /* clear entire recbuf, no partial message remains */
 		memset(pclient->recvbuf, '\0', sizeof(pclient->recvbuf));
 		pclient->nChar=0;
 	}
-	if (ioc_log_debug==1) printf("new recvbuf='%s'\n", pclient->recvbuf);
 
 }
 
 
-/* checks if there is another tag within this message */
+/* checks if there is another tag within this individual message */
 static int hasNextTag(char *text, char *found) 
 {
 	int rc=0;
@@ -1192,11 +1267,6 @@ static int hasNextTag(char *text, char *found)
 	/* a tag found was found */
 	/* check the tag is beginning of msg or not part of text, e.g. delta_time=" */
 	if (found != NULL) rc=1;
-/*	if (found != NULL) {  found a tag 
-		// check it's a real tag and not part of text 
-		if ((found != text) && (found-1   tag not at the beginning
-
-	printf("rc=%d\n", rc); */
 
 	return rc;
 }
@@ -1226,6 +1296,7 @@ static int parseTags(int nchar, char *hostIn, char *text, char *timeApp,  char *
 	int maxTagLen;
 	char thisTag[1000];
 	char timestamp[ASCII_TIME_SIZE];
+	char buff[10];
 /*  Initialize outputs.
 **  default is IOC
 **  host defaults to the host in pclient
@@ -1244,10 +1315,8 @@ static int parseTags(int nchar, char *hostIn, char *text, char *timeApp,  char *
 	strcpy(facility, "IOC");
 	maxTagLen = NAME_SIZE;    /* default maxTagLen to NAME_SIZE */
 
-	if (ioc_log_debug==1) {
-		printf("PARSE TAGS\n");
-		printf("charPtr=%s\n", charPtr);
-	}
+	fprintf(ioc_log_pverbosefile, "PARSE TAGS\n");
+	fprintf(ioc_log_pverbosefile, "charPtr=%s\n", charPtr);
 
 	/* start parsing message */
 	while (charPtr) {
@@ -1258,7 +1327,7 @@ static int parseTags(int nchar, char *hostIn, char *text, char *timeApp,  char *
 				/* make sure this is a tag and not a "=" within the message text */
 				rc = hasNextTag(nextTagPtr, tmpPtr);					
 				if (rc == 0) { /* no next tag, the "=" is within the message text */
-					if (ioc_log_debug==1) printf("no next tag for %s\n", nextTagPtr);
+					fprintf(ioc_log_pverbosefile, "no next tag for %s\n", nextTagPtr);
 					lastPtr= strchr(tagPtr, ' '); /* look for space between this tag value and the message text, assume no space in this tag value */
 				} else { /* this is a tag */
 					tmpPtr = strchr(tagPtr, ' '); /* look for space, assume there will be at least one more space */
@@ -1299,7 +1368,7 @@ static int parseTags(int nchar, char *hostIn, char *text, char *timeApp,  char *
 				tagPtr++;
 				strncpy(valPtr, tagPtr, charsize);
 				valPtr[charsize-1] = 0;
-				if (ioc_log_debug==1) printf("Tag: %s, Value: %s\n", thisTag, valPtr);
+				fprintf(ioc_log_pverbosefile, "Tag: %s, Value: %s\n", thisTag, valPtr);
 				lastPtr++;
 				ncharStripped = lastPtr - text;
 				charPtr = lastPtr;
@@ -1322,8 +1391,8 @@ static int parseTags(int nchar, char *hostIn, char *text, char *timeApp,  char *
 		charPtr = strchr(host, '.');
 		if (charPtr) *charPtr = 0;
 	}
-	/* prepend "SLC" to anything coming from mcc host 
-	if ((strncmp(host, "MCC", 3)==0) || (strncmp(host, "mcc.slac.stanford.edu", 21)==0)) {
+	// prepend "SLC" to anything coming from mcc host 
+/*	if ((strncmp(host, "MCC", 3)==0) || (strncmp(host, "mcc.slac.stanford.edu", 21)==0)) {
 		printf("current facility=%s\n", facility);
 		strcpy(buff, "SLC-");
 		strcat(buff, facility);
@@ -1337,10 +1406,10 @@ static int parseTags(int nchar, char *hostIn, char *text, char *timeApp,  char *
 /*		strcpy(timeApp, timeIn); */
 		strcpy(timeApp, timestamp); 
 		*timeDef = 1;
-		if (ioc_log_debug==1) printf("no timestamp defined, use log server's, set timeDef=1\n");
+		fprintf(ioc_log_pverbosefile, "no timestamp defined, use log server's, set timeDef=1\n");
 	} else {
 		*timeDef = 0;
-		if (ioc_log_debug==1) printf("app timestamp defined, set timeDef=0\n");
+		fprintf(ioc_log_pverbosefile, "app timestamp defined, set timeDef=0\n");
 		/* start TESTING 
 		printf("ERROR!!!  CHANGE BACK TO *timeDef=0\n");
 		*timeDef=1; strcpy(timeApp, timeIn); // always copy logserver_timestamp to app_timestamp for TESTING, delete when finished TESTING
@@ -1396,6 +1465,22 @@ static void freeLogClient(struct iocLogClient     *pclient)
 	free (pclient);
 
 	return;
+}
+
+/* get current date in format YYYYMMDD */
+static void getDate(char *datestr, int len)
+{
+	struct timeval tv;
+	struct tm* ptm;
+
+	memset(datestr, '\0', len);
+	
+	/* get time */
+	gettimeofday(&tv, NULL);
+	ptm = localtime(&tv.tv_sec);
+
+	/* format to seconds */
+	strftime(datestr, len, "%Y%m%d", ptm);
 }
 
 /* get current timestamp in format 14-Feb-2012 14:24:02.09 */
