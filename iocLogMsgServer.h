@@ -34,46 +34,54 @@ extern int db_commit();
 
 extern int db_insert 
     (
-    int  errlog_id,
+	int  errlog_id,
 	char program_name[21],
-    char facility_name[41],
-    char severity[21],
-    char msg[681],
-    char logServer_ascii_time[31],
-    char app_ascii_time[31], 
-    char throttle_ascii_time[31],
-    int  app_timestamp_def,
+	char facility_name[41],
+	char severity[21],
+	char msg[681],
+	char logServer_ascii_time[31],
+	char app_ascii_time[31], 
+	char throttle_ascii_time[31],
+	int  app_timestamp_def,
 	char msg_code[257],
-    char hostnode[41],
-    char user_name[41],
-   	char msg_status[21],
-    char process_name[41],
-    long msg_count,
+	char hostnode[41],
+	char user_name[41],
+	char msg_status[21],
+	char process_name[41],
+	long msg_count,
 	char throttle_parameter[2001],
-    int commit_flag
+	int commit_flag
     );
 
 /* globals */
 static unsigned short ioc_log_port;
-static long ioc_log_fileLimit;
-static char ioc_log_fileName[256];
 static char ioc_log_fileCommand[256];
 static char ioc_log_programName[10];
-int ioc_log_throttleSeconds;
-int ioc_log_throttleFields;
 static char ioc_log_testDirectory[500];  /* oracle testing */
+static long ioc_log_fileLimit;
+static char ioc_log_fileName[256];
 static FILE *ioc_log_plogfile;           /* pointer to log file handler */
 static char ioc_log_hostname[100];
 
+// verbose log file
+static char ioc_log_verboseFileName[256];
+static FILE *ioc_log_pverbosefile;
+
+static int ioc_log_throttleSeconds;
+static int ioc_log_throttleFields;
 static char ioc_log_throttleSecondsPv[100];
 static char ioc_log_throttleFieldsPv[100];
 /* Channel Access pv type hooks */
 static int ioc_log_throttleSecondsPvType;
 static int ioc_log_throttleFieldsPvType;
-//int ioc_log_debug;
-int ioc_log_commitCount;
+static int ioc_log_commitCount;
 
-#define ioc_log_debug 0
+/* raw data file used to write data in case Oracle insert fails */
+static char ioc_log_rawDataFileName[256];
+static FILE *ioc_log_prawdatafile;
+
+#define MAX_VERBOSE_FILESIZE 5000000
+//#define ioc_log_debug 1
 #define IOCLS_ERROR (-1)
 #define IOCLS_OK 0
 
@@ -127,12 +135,14 @@ extern void sendMessagesTest(int nrows);
 static void acceptNewClient (void *pParam);
 static void readFromClient(void *pParam);
 static void getTimestamp (char *timestamp, int len);
+static void getDate(char *datestr, int len);
 /*static char *getTimestamp(); */
 static int getConfig(void);
-static int openLogFileOld(struct ioc_log_server *pserver);
-static int checkLogFileOld(struct ioc_log_server *pserver);
 static int openLogFile();
+static int openLogFile2(char *filename, FILE **pfile, int maxsize);
 static int checkLogFile();
+static int checkLogFile2(char *filename, FILE *pfile, int maxsize);
+static int writeToRawDataFile(char *line);
 static void envFailureNotify(const ENV_PARAM *pparam);
 static void freeLogClient(struct iocLogClient *pclient);
 static void parseMessages(struct iocLogClient *pclient);
@@ -140,11 +150,11 @@ static int parseTags(int nchar, char *hostIn, char *text, char *timeApp,  char *
 static int hasNextTag(char *text, char *found);
 static void getThrottleTimestamp(char *appTimestamp, char* throttleTimestamp, int throttleSeconds);
 static void getThrottleString(char *msg, char *system, char *severity, char *code, char *host, char *user, char *status, char *process, char *throttleString, int throttleStringMask);
-void caEventHandler(evargs args);
-void caConnectionHandler(struct connection_handler_args args);
+static void caEventHandler(evargs args);
+static void caConnectionHandler(struct connection_handler_args args);
 static int caStartChannelAccess();
 static int caStartMonitor(char *pvname, int *pvtype);
-int isNumeric (const char * s);
+static int isNumeric (const char * s);
 static void initGlobals();
 static void printHelp();
 
