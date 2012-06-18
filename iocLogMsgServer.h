@@ -80,7 +80,7 @@ static int ioc_log_commitCount;
 static char ioc_log_rawDataFileName[256];
 static FILE *ioc_log_prawdatafile;
 
-#define MAX_VERBOSE_FILESIZE 5000000
+#define MAX_VERBOSE_FILESIZE 5
 //#define ioc_log_debug 1
 #define IOCLS_ERROR (-1)
 #define IOCLS_OK 0
@@ -141,7 +141,7 @@ static int getConfig(void);
 static int openLogFile();
 static int openLogFile2(char *filename, FILE **pfile, int maxsize);
 static int checkLogFile();
-static int checkLogFile2(char *filename, FILE *pfile, int maxsize);
+static int checkLogFile2(char *filename, FILE **pfile, int maxsize);
 static int writeToRawDataFile(char *line);
 static void envFailureNotify(const ENV_PARAM *pparam);
 static void freeLogClient(struct iocLogClient *pclient);
