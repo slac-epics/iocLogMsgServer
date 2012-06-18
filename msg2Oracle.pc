@@ -86,18 +86,38 @@ int db_connect(server)
     char server[31];
 {
     int curr_status = 0;
-
     g_status = MOD_SUCCESS;
+	char userid[100];
+	char passwd[100];
+	char schema[] = "message_logger";
+	char cmd[100];
+	char buff[100];
+
+	memset(cmd, '\0', sizeof(cmd));
+	memset(buff, '\0', sizeof(buff));
+	memset(passwd, '\0', sizeof(passwd));
+	memset(userid, '\0', sizeof(userid));
+
+	// get password
+/*	passwd = getPwd("message_logger");*/
+	sprintf(cmd, "getPwd %s", schema);
+printf("cmd=%s\n", cmd);
+	FILE *fp = popen(cmd, "r");
+	fgets(buff, sizeof(buff), fp);
+	fclose(fp);
+	// remove trailing '\n' from passwd
+	strncpy(passwd, buff, strlen(buff)-1);
 
     EXEC SQL BEGIN DECLARE SECTION;
-/*    char userid[] = "ERRLOG_OWNER/DE2B_USSY@"; */
-        char userid[100];
 
     EXEC SQL END DECLARE SECTION;
 
-/*      strcpy(userid, "ERRLOG_OWNER/DE2B_USSY@");*/
-        strcpy(userid, "message_logger/asorry17cents:@");
-    strcat(userid, server);
+	// connect
+//	strcpy(userid, "message_logger/asorry17cents:@");
+	strcpy(userid, schema);
+	sprintf(userid, "%s/%s@", schema,passwd);
+printf("userid=%s\n", userid);
+	strcat(userid, server);
 
     EXEC SQL WHENEVER SQLERROR DO sql_error("CONNECT ERROR");
 
@@ -106,7 +126,7 @@ int db_connect(server)
     EXEC SQL WHENEVER SQLERROR CONTINUE;
 
 /*        EXEC SQL ALTER SESSION SET COMMIT_WRITE='BATCH,NOWAIT'; */
-      EXEC SQL ALTER SESSION SET COMMIT_WRITE='IMMEDIATE,NOWAIT'; 
+	EXEC SQL ALTER SESSION SET COMMIT_WRITE='IMMEDIATE,NOWAIT'; 
 
     curr_status = g_status;
 
