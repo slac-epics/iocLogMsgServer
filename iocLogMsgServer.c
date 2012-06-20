@@ -365,8 +365,8 @@ static void initGlobals()
 	/* initialize globals */
 	ioc_log_throttleSeconds = 1;          /* 1 second */
 	ioc_log_throttleFields = 3;           /* program/accelerator and msg field */
-	strcpy(ioc_log_throttleSecondsPv, "SIOC:SYS0:AL00:THROTTLE_SECONDS");
-	strcpy(ioc_log_throttleFieldsPv, "SIOC:SYS0:AL00:THROTTLE_FIELDS");
+	strcpy(ioc_log_throttleSecondsPv, "SIOC:SYS0:OP00:MSGLOG_THRT_SEC");
+	strcpy(ioc_log_throttleFieldsPv, "SIOC:SYS0:OP00:MSGLOG_THRT_FLD");
 
 	strcpy(ioc_log_testDirectory, "");
 
@@ -382,7 +382,6 @@ static void initGlobals()
 	ioc_log_plogfile = NULL;
 	ioc_log_pverbosefile = NULL;
 
-printf("here %s\n", ioc_log_fileName);	
 	// define verbose file name
 	pch=strrchr(ioc_log_fileName,'\\/');
 	strncpy(ioc_log_verboseFileName, ioc_log_fileName, pch - ioc_log_fileName + 1);
