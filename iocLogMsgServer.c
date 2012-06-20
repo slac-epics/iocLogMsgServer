@@ -1191,7 +1191,7 @@ static void parseMessages(struct iocLogClient *pclient)
 				ioc_log_prawdatafile = NULL;
 			}
 		} else {
-			fprintf(ioc_log_pverbosefile, "ERROR INSERTING INTO ERRLOG TABLE, %s %s %s\n", system, host, text);
+			fprintf(ioc_log_pverbosefile, "ERROR INSERTING %s %s %s\n", system, host, text);
 			/* TODO: save entire message to data file for future processing */
 			fprintf(ioc_log_pverbosefile, "printing unsuccessful row : '%s'\n", onerow);
 			//rc = fprintf(ioc_log_plogfile, "%s: ERROR inserting %s\n", pclient->ascii_time, onerow);
