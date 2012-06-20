@@ -3,8 +3,8 @@
 # Solaris rc2 script for EPICS IOC Log Server process.
 #
 #source /afs/slac/g/lcls/tools/script/ENVS.bash
-#source /afs/slac/g/lcls/epics/setup/go_epics_3-14-12.bash
-source /afs/slac/g/lcls/epics/setup/go_epics_3-14-8-2-lcls2.bash
+source /afs/slac/g/lcls/epics/setup/go_epics_3-14-12.bash
+#source /afs/slac/g/lcls/epics/setup/go_epics_3-14-8-2-lcls2.bash
 # point to test version of iocLogServer
 ##########################################################
 # THIS IS FOR RUNNING iocLogServer TEST IN BASE ENVIRONMENT
@@ -36,12 +36,8 @@ export LD_LIBRARY_PATH=/afs/slac/package/oracle/d/linux/11.1.0/lib:$LD_LIBRARY_P
 # the log port is defaulted to 7004 in $EPICS_BASE/config/CONFIG_ENV
 export EPICS_IOC_LOG_PORT="7004"
 export EPICS_IOC_LOG_FILE_NAME="/nfs/slac/g/lcls/cmlog/iocLogServerTest/iocLogServer.log"
-export EPICS_IOC_LOG_FILE_LIMIT="1000000"
+export EPICS_IOC_LOG_FILE_LIMIT="10000000"
 #export EPICS_IOC_LOG_FILE_LIMIT="10000000"
-
-# use lcls-dev2 channel access environment for testing pv monitoring
-export EPICS_CA_ADDR_LIST="134.79.219.12"
-export EPICS_CA_SERVER_PORT="5066"
 
 printenv | grep EPICS
 
@@ -52,6 +48,5 @@ echo "Starting the PROTOTYPE EPICS Log MSG Server "
 # STARTING THE STABLE PROTOTYPE VERSION
 # THE ONE UNDER DEVELOPMENT, iocLogMsgServer, MAY OR MAY NOT WORK
 #gdb iocLogMsgServer-WORKING-PROTOTYPE
-gdb iocLogMsgServer # run program=FACET
-#iocLogMsgServer program=LCLS throttleSecondsPv=SIOC:SYS0:AL00:THROTTLE_SECONDS throttleFieldsPv=SIOC:SYS0:AL00:THROTTLE_FIELDS
-
+#gdb iocLogMsgServer # run program=FACET
+../../bin/linux-x86/iocLogMsgServer program=FACET throttleSecondsPv=SIOC:SYS0:OP00:MSGLOG_THRT_SEC throttleFieldsPv=SIOC:SYS0:OP00:MSGLOG_THRT_FLD
