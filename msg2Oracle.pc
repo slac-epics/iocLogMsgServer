@@ -83,10 +83,10 @@ void sql_error(errmsg)
 /* ------------------------------------------------------------ */
 
 int db_connect(server)
-    char server[31];
+char server[31];
 {
-    int curr_status = 0;
-    g_status = MOD_SUCCESS;
+	int curr_status = 0;
+	g_status = MOD_SUCCESS;
 	char userid[100];
 	char passwd[100];
 	char schema[] = "message_logger";
@@ -98,39 +98,38 @@ int db_connect(server)
 	memset(passwd, '\0', sizeof(passwd));
 	memset(userid, '\0', sizeof(userid));
 
+	// set up connection string
 	// get password
-/*	passwd = getPwd("message_logger");*/
 	sprintf(cmd, "getPwd %s", schema);
-printf("cmd=%s\n", cmd);
 	FILE *fp = popen(cmd, "r");
 	fgets(buff, sizeof(buff), fp);
 	fclose(fp);
 	// remove trailing '\n' from passwd
 	strncpy(passwd, buff, strlen(buff)-1);
-
-    EXEC SQL BEGIN DECLARE SECTION;
-
-    EXEC SQL END DECLARE SECTION;
-
-	// connect
-//	strcpy(userid, "message_logger/asorry17cents:@");
 	strcpy(userid, schema);
-	sprintf(userid, "%s/%s@", schema,passwd);
-printf("userid=%s\n", userid);
+	sprintf(userid, "%s/%s@", schema, passwd);
+//	strcpy(userid, "message_logger/asorry17cents:@");
 	strcat(userid, server);
+printf("userid=%s\n", userid);
 
-    EXEC SQL WHENEVER SQLERROR DO sql_error("CONNECT ERROR");
+    	EXEC SQL BEGIN DECLARE SECTION;
+	
+    	EXEC SQL END DECLARE SECTION;
+	// END FIXME
 
-    EXEC SQL CONNECT :userid;
 
-    EXEC SQL WHENEVER SQLERROR CONTINUE;
+    	EXEC SQL WHENEVER SQLERROR DO sql_error("CONNECT ERROR");
+
+	EXEC SQL CONNECT :userid;
+
+	EXEC SQL WHENEVER SQLERROR CONTINUE;
 
 /*        EXEC SQL ALTER SESSION SET COMMIT_WRITE='BATCH,NOWAIT'; */
 	EXEC SQL ALTER SESSION SET COMMIT_WRITE='IMMEDIATE,NOWAIT'; 
 
-    curr_status = g_status;
+	curr_status = g_status;
 
-    return curr_status;
+	return curr_status;
 }
 
 /* ------------------------------------------------------------ */
@@ -241,7 +240,7 @@ int db_insert(msglog_id,
 
 
 /*    EXEC SQL INSERT INTO message_log (msglog_id,*/
-    EXEC SQL INSERT INTO message_log_part (msglog_id,
+    EXEC SQL INSERT INTO message_log (msglog_id,
 	                             program_name,
                                  facility_name,
                                  severity,
@@ -283,7 +282,7 @@ int db_insert(msglog_id,
                                  systimestamp
                                 )
 /*                LOG ERRORS INTO MESSAGE_LOG_ERRORS */
-                LOG ERRORS INTO MESSAGE_LOG_PART_ERRORS 
+                LOG ERRORS INTO MESSAGE_LOG_ERRORS 
               REJECT LIMIT UNLIMITED;
 
 
