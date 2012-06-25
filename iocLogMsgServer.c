@@ -144,9 +144,6 @@ int main(int argc, char* argv[]) {
 
 	}
 
-	printf("ioc_log_program_name=%s\nioc_log_throttleSecondsPv=%s\nioc_log_throttleFieldsPv=%s\n", ioc_log_programName, ioc_log_throttleSecondsPv, ioc_log_throttleFieldsPv);
-
-
 	/* open log file */
 //	status = openLogFile(); 
 	status = openLogFile2(ioc_log_fileName, &ioc_log_plogfile, ioc_log_fileLimit);
@@ -154,6 +151,9 @@ int main(int argc, char* argv[]) {
 	getTimestamp(timestamp, sizeof(timestamp));
 	fprintf(ioc_log_plogfile, "\n\n========================================================================================================\n");
 	fprintf(ioc_log_plogfile, "%s: iocLogMsgServer STARTED on %s\n", timestamp, ioc_log_hostname);
+
+	printf("ioc_log_program_name=%s\nioc_log_throttleSecondsPv=%s\nioc_log_throttleFieldsPv=%s\n", ioc_log_programName, ioc_log_throttleSecondsPv, ioc_log_throttleFieldsPv);
+	fprintf(ioc_log_plogfile, "ioc_log_program_name=%s\nioc_log_throttleSecondsPv=%s\nioc_log_throttleFieldsPv=%s\n", ioc_log_programName, ioc_log_throttleSecondsPv, ioc_log_throttleFieldsPv);
 
 	/* setup chchannel access pv monitoring for logserver throttle settings */
 	status = caStartChannelAccess();
@@ -169,7 +169,7 @@ int main(int argc, char* argv[]) {
 	// connect to Oracle
 	if (!db_connect("MCCODEV")) {	
 		getTimestamp(timestamp, sizeof(timestamp));
-        fprintf(ioc_log_pverbosefile, "%s\n", "iocLogMsgServer: Error connecting to Oracle\n");
+		fprintf(ioc_log_pverbosefile, "%s\n", "iocLogMsgServer: Error connecting to Oracle\n");
 		fprintf(ioc_log_plogfile, "%s: ERROR connecting to MCCODEV!\n", timestamp);
 	    return IOCLS_ERROR;
 	}
