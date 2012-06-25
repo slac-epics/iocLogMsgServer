@@ -47,6 +47,17 @@ echo "Starting the PROTOTYPE EPICS Log MSG Server "
 
 # STARTING THE STABLE PROTOTYPE VERSION
 # THE ONE UNDER DEVELOPMENT, iocLogMsgServer, MAY OR MAY NOT WORK
+# throttleSecondsPv=SIOC:SYS0:OP00:MSGLOG_THRT_SEC 
+# throttleFieldsPv=SIOC:SYS0:OP00:MSGLOG_THRT_FLD
+# SYS0 = LCLS
+# SYS1 = FACET
+# SYS2 = LCLS2
+# SYS3    reserved for if (when) we build LCLS3
+# SYS4 =  NLCTA,
+# SYS5 = SPEAR
+# SYS6 = XTA X-Band Test Area
+# SYS7 = ASTA/GTF
+# SYS8  =  APE Test Area
 #gdb iocLogMsgServer-WORKING-PROTOTYPE
 #gdb iocLogMsgServer # run program=FACET
-../../bin/linux-x86/iocLogMsgServer program=FACET throttleSecondsPv=SIOC:SYS0:OP00:MSGLOG_THRT_SEC throttleFieldsPv=SIOC:SYS0:OP00:MSGLOG_THRT_FLD
+../../bin/linux-x86/iocLogMsgServer program=LCLS throttleSecondsPv=SIOC:SYS0:OP00:MSGLOG_THRT_SEC throttleFieldsPv=SIOC:SYS0:OP00:MSGLOG_THRT_FLD
