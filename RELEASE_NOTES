@@ -1,2 +1,5 @@
+iocLogMsgServer-R1-0-1: 06/27/2012 (niafong)
+  Hard code Oracle password
+
 iocLogMsgServer-R1-0-0: 06/25/2012 (niafong)
   Initial version of iocLogMsgServer to replace cmlog
