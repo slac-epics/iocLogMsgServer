@@ -100,7 +100,7 @@ char server[31];
 
 	// set up connection string
 	// get password
-	sprintf(cmd, "getPwd %s", schema);
+/*	sprintf(cmd, "getPwd %s", schema);
 	FILE *fp = popen(cmd, "r");
 	fgets(buff, sizeof(buff), fp);
 	fclose(fp);
@@ -108,7 +108,8 @@ char server[31];
 	strncpy(passwd, buff, strlen(buff)-1);
 	strcpy(userid, schema);
 	sprintf(userid, "%s/%s@", schema, passwd);
-//	strcpy(userid, "message_logger/asorry17cents:@");
+*/
+	strcpy(userid, "message_logger/asorry17cents:@");
 	strcat(userid, server);
 printf("userid=%s\n", userid);
 
