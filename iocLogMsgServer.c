@@ -122,6 +122,11 @@ int main(int argc, char* argv[]) {
 		if (strncmp(argv[i], buff, strlen(buff)) == 0) {
 			strcpy(ioc_log_throttleFieldsPv, argv[i]+strlen(buff));
 		}
+		/* get database */
+		strcpy(buff, "db=");
+		if (strncmp(argv[i], buff, strlen(buff)) == 0) {
+			strcpy(ioc_log_database, argv[i]+strlen(buff));
+		}
 		/* get test directory */
 		strcpy(buff, "testdir=");
 		if (strncmp(argv[i], buff, strlen(buff)) == 0) {
@@ -152,8 +157,8 @@ int main(int argc, char* argv[]) {
 	fprintf(ioc_log_plogfile, "\n\n========================================================================================================\n");
 	fprintf(ioc_log_plogfile, "%s: iocLogMsgServer STARTED on %s\n", timestamp, ioc_log_hostname);
 
-	printf("ioc_log_program_name=%s\nioc_log_throttleSecondsPv=%s\nioc_log_throttleFieldsPv=%s\n", ioc_log_programName, ioc_log_throttleSecondsPv, ioc_log_throttleFieldsPv);
-	fprintf(ioc_log_plogfile, "ioc_log_program_name=%s\nioc_log_throttleSecondsPv=%s\nioc_log_throttleFieldsPv=%s\n", ioc_log_programName, ioc_log_throttleSecondsPv, ioc_log_throttleFieldsPv);
+	printf("ioc_log_program_name=%s\nioc_log_throttleSecondsPv=%s\nioc_log_throttleFieldsPv=%s\nioc_log_database=%s\n", ioc_log_programName, ioc_log_throttleSecondsPv, ioc_log_throttleFieldsPv, ioc_log_database);
+	fprintf(ioc_log_plogfile, "ioc_log_program_name=%s\nioc_log_throttleSecondsPv=%s\nioc_log_throttleFieldsPv=%s\nioc_log_database\n", ioc_log_programName, ioc_log_throttleSecondsPv, ioc_log_throttleFieldsPv, ioc_log_database);
 
 	/* setup chchannel access pv monitoring for logserver throttle settings */
 	status = caStartChannelAccess();
@@ -167,16 +172,17 @@ int main(int argc, char* argv[]) {
 
 
 	// connect to Oracle
-	if (!db_connect("MCCODEV")) {	
+//	if (!db_connect("MCCODEV")) {
+	if (!db_connect(ioc_log_database)) {		
 		getTimestamp(timestamp, sizeof(timestamp));
 		fprintf(ioc_log_pverbosefile, "%s\n", "iocLogMsgServer: Error connecting to Oracle\n");
-		fprintf(ioc_log_plogfile, "%s: ERROR connecting to MCCODEV!\n", timestamp);
+		fprintf(ioc_log_plogfile, "%s: ERROR connecting to %s!\n", timestamp, ioc_log_database);
 	    return IOCLS_ERROR;
 	}
 
-	fprintf(stderr, "connected!\n");
+	fprintf(stderr, "connected to %s!\n", ioc_log_database);
 	getTimestamp(timestamp, sizeof(timestamp));
-	fprintf(ioc_log_plogfile, "%s: Successfully connected to MCCODEV\n", timestamp);
+	fprintf(ioc_log_plogfile, "%s: Successfully connected to %s\n", timestamp, ioc_log_database);
 
 	/* RUN TEST */
 	if (strlen(ioc_log_testDirectory) > 0) {
@@ -362,11 +368,12 @@ static void initGlobals()
 {
 	char *pch;
 
-	/* initialize globals */
+	/* set defaults */
 	ioc_log_throttleSeconds = 1;          /* 1 second */
 	ioc_log_throttleFields = 3;           /* program/accelerator and msg field */
 	strcpy(ioc_log_throttleSecondsPv, "SIOC:SYS0:OP00:MSGLOG_THRT_SEC");
 	strcpy(ioc_log_throttleFieldsPv, "SIOC:SYS0:OP00:MSGLOG_THRT_FLD");
+	strcpy(ioc_log_database, "MCCOMSG");
 
 	strcpy(ioc_log_testDirectory, "");
 

@@ -62,6 +62,7 @@ static long ioc_log_fileLimit;
 static char ioc_log_fileName[256];
 static FILE *ioc_log_plogfile;           /* pointer to log file handler */
 static char ioc_log_hostname[100];
+static char ioc_log_database[100];             // database to connect 
 
 // verbose log file
 static char ioc_log_verboseFileName[256];
