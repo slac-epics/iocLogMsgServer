@@ -1,3 +1,6 @@
+iocLogMsgServer-R1-2-0: 06/29/2012 (niafong)
+  Pass database host in as command line argument, e.g. iocLogMsgServer db=MCCOMSG
+
 iocLogMsgServer-R1-0-1: 06/27/2012 (niafong)
   Hard code Oracle password
 
