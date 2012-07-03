@@ -155,10 +155,10 @@ int main(int argc, char* argv[]) {
 	status = openLogFile2(ioc_log_verboseFileName, &ioc_log_pverbosefile, MAX_VERBOSE_FILESIZE*ioc_log_fileLimit);
 	getTimestamp(timestamp, sizeof(timestamp));
 	fprintf(ioc_log_plogfile, "\n\n========================================================================================================\n");
-	fprintf(ioc_log_plogfile, "%s: iocLogMsgServer STARTED on %s\n", timestamp, ioc_log_hostname);
+	fprintf(ioc_log_plogfile, "%s: %s STARTED on %s\n", timestamp, VERSION, ioc_log_hostname);
 
 	printf("ioc_log_program_name=%s\nioc_log_throttleSecondsPv=%s\nioc_log_throttleFieldsPv=%s\nioc_log_database=%s\n", ioc_log_programName, ioc_log_throttleSecondsPv, ioc_log_throttleFieldsPv, ioc_log_database);
-	fprintf(ioc_log_plogfile, "ioc_log_program_name=%s\nioc_log_throttleSecondsPv=%s\nioc_log_throttleFieldsPv=%s\nioc_log_database\n", ioc_log_programName, ioc_log_throttleSecondsPv, ioc_log_throttleFieldsPv, ioc_log_database);
+	fprintf(ioc_log_plogfile, "ioc_log_program_name=%s\nioc_log_throttleSecondsPv=%s\nioc_log_throttleFieldsPv=%s\nioc_log_database=%s\n", ioc_log_programName, ioc_log_throttleSecondsPv, ioc_log_throttleFieldsPv, ioc_log_database);
 
 	/* setup chchannel access pv monitoring for logserver throttle settings */
 	status = caStartChannelAccess();
