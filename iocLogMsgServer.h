@@ -81,6 +81,7 @@ static int ioc_log_commitCount;
 static char ioc_log_rawDataFileName[256];
 static FILE *ioc_log_prawdatafile;
 
+#define VERSION "iocLogMsgServerR1-0-3"
 #define MAX_VERBOSE_FILESIZE 5
 //#define ioc_log_debug 1
 #define IOCLS_ERROR (-1)
