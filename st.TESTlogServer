@@ -60,4 +60,4 @@ echo "Starting the PROTOTYPE EPICS Log MSG Server "
 # SYS8  =  APE Test Area
 #gdb iocLogMsgServer-WORKING-PROTOTYPE
 #gdb iocLogMsgServer # run program=FACET
-../../bin/linux-x86/iocLogMsgServer program=LCLS throttleSecondsPv=SIOC:SYS0:OP00:MSGLOG_THRT_SEC throttleFieldsPv=SIOC:SYS0:OP00:MSGLOG_THRT_FLD db=MCCOMSG
+../../bin/linux-x86/iocLogMsgServer program=LCLS throttleSecondsPv=SIOC:SYS0:OP00:MSGLOG_THRT_SEC throttleFieldsPv=SIOC:SYS0:OP00:MSGLOG_THRT_FLD db=MCCODEV &
