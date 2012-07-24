@@ -1,3 +1,14 @@
+#==============================================================
+#
+#  Name: RELEASE_NOTES
+#
+#  Rem:  This files describes release notes for 
+#        the iocLogMsgServer Application.        
+#
+#  Auth: 25-June-2012, N. Fong         (NIAFONG)
+#  Rev:  dd-mmm-yyyy, Reviewer's Name    (USERNAME)
+#==============================================================
+
 iocLogMsgServer-R1-0-3: 07/01/2012 (niafong)
   Print version string to log file.
 
