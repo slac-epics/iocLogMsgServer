@@ -1360,7 +1360,9 @@ static int parseTags(int nchar, char *hostIn, char *text, char *timeApp,  char *
 			else if ( !strncmp(charPtr,"code=",5)) { valPtr = code; maxTagLen = NAME_SIZE; strcpy(thisTag,"code"); }
 			else if ( !strncmp(charPtr,"proc=",5)) { valPtr = process; maxTagLen = PROCESS_SIZE; strcpy(thisTag,"proc"); }
 			else if ( !strncmp(charPtr,"user=",5)) { valPtr = user; maxTagLen = USER_NAME_SIZE; strcpy(thisTag,"user"); }
-			else if ((!strncmp(charPtr,"time=",5)) && (charPtr[7]  == '-') && (charPtr[11] == '-') && (charPtr[16] == ' ')) {
+			else if ((!strncmp(charPtr,"time=",5)) && (charPtr[7]  == '-') && (charPtr[11] == '-') && (charPtr[16] == ' ') 
+			                                       && (charPtr[19] == ':') && (charPtr[22] == ':')) {
+				/* time=14-Feb-2012 14:24:02.09 */
 				valPtr = timeApp; strcpy(thisTag,"time");
 				maxTagLen = ASCII_TIME_SIZE;					
 				/* there is a space in the time field (only field that allows a space before msg text), reset lastPtr just in case this is the last tag before msg text */
