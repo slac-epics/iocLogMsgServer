@@ -1,6 +1,11 @@
 # current oracle env seems to have what it takes!
 #source /afs/slac/g/lcls/tools/oracle/oracleSetup.bash
-source $TOOLS/oracle/oracleSetup.bash
+
+# FACET environment
+source $TOOLS/oracle/oracleSetup-facet.bash
+
+# LCLS environment
+#source $TOOLS/oracle/oracleSetup.bash
 
 # now add on stuff for ProC
 #export ORACLE_HOME=/afs/slac/package/oracle/d/linux/11.1.0
