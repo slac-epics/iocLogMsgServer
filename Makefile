@@ -7,7 +7,7 @@
 # and higher are distributed subject to a Software License Agreement found
 # in file LICENSE that is included with this distribution. 
 #*************************************************************************
-TOP=../..
+TOP=../../..
 include $(TOP)/configure/CONFIG
 
 #
@@ -39,7 +39,6 @@ iocLogMsgServer_SYS_LIBS_solaris = socket
 iocLogMsgServer_SYS_LIBS += clntsh
 # this one works too
 #iocLogMsgServer_SYS_LIBS += sqlplus
-
 
 include $(TOP)/configure/RULES
 
