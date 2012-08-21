@@ -8,6 +8,10 @@
 #  Auth: 25-June-2012, N. Fong         (NIAFONG)
 #  Rev:  dd-mmm-yyyy, Reviewer's Name    (USERNAME)
 #==============================================================
+iocLogMsgServer-R1-1-1: 08/21/2012 
+  Use $TOOLS env variable to source oracleSetup bash script (different scripts for LCLS and FACET) in envForBuild.bash
+  Use $ORACLE_HOME env variable in Makefile
+
 iocLogMsgServer-R1-1-0: 08/21/2012 
   Changes per Ernest.
 
