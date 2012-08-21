@@ -19,12 +19,20 @@ PROD_HOST_WIN32   = iocLogMsgServer
 PROD_SYS_LIBS_WIN32 = ws2_32 advapi32 user32
 PROD_LIBS = Com ca
 
-USR_LDFLAGS_DEFAULT += -L/afs/slac/package/oracle/d/linux/11.1.0/lib
+#USR_LDFLAGS_DEFAULT += -L/afs/slac/package/oracle/d/linux/11.1.0/lib
+#USR_CFLAGS = -O0
+
+#msg2Oracle_CFLAGS += -I/afs/slac/package/oracle/d/linux/11.1.0/precomp/public
+#msg2Oracle_CFLAGS += -L/afs/slac/package/oracle/d/linux/11.1.0/precomp/lib
+#msg2Oracle_CFLAGS += -L/afs/slac/package/oracle/d/linux/11.1.0/lib
+
+USR_LDFLAGS_DEFAULT += -L$(ORACLE_HOME)/lib
 USR_CFLAGS = -O0
 
-msg2Oracle_CFLAGS += -I/afs/slac/package/oracle/d/linux/11.1.0/precomp/public
-msg2Oracle_CFLAGS += -L/afs/slac/package/oracle/d/linux/11.1.0/precomp/lib
-msg2Oracle_CFLAGS += -L/afs/slac/package/oracle/d/linux/11.1.0/lib
+msg2Oracle_CFLAGS += -I$(ORACLE_HOME)/precomp/public
+msg2Oracle_CFLAGS += -L$(ORACLE_HOME)/precomp/lib
+msg2Oracle_CFLAGS += -L$(ORACLE_HOME)/lib
+
 
 iocLogMsgServer_SRCS = iocLogMsgServer.c
 iocLogMsgServer_SRCS += msg2Oracle.c
