@@ -81,7 +81,7 @@ static int ioc_log_commitCount;
 static char ioc_log_rawDataFileName[256];
 static FILE *ioc_log_prawdatafile;
 
-#define VERSION "iocLogMsgServerR1-1-2"
+#define VERSION "iocLogMsgServerR1-2-0"
 #define MAX_VERBOSE_FILESIZE 5
 //#define ioc_log_debug 1
 #define IOCLS_ERROR (-1)
@@ -98,6 +98,7 @@ static FILE *ioc_log_prawdatafile;
 #define PROCESS_SIZE 41
 #define THROTTLE_MSG_SIZE 2001
 #define MSG_CODE_SIZE 257
+#define PROGRAM_SIZE 10
 
 #define THROTTLE_PROGRAM     1 << 0    /* 1 */
 #define THROTTLE_MSG         1 << 1    /* 2 */
@@ -148,7 +149,7 @@ static int writeToRawDataFile(char *line);
 static void envFailureNotify(const ENV_PARAM *pparam);
 static void freeLogClient(struct iocLogClient *pclient);
 static void parseMessages(struct iocLogClient *pclient);
-static int parseTags(int nchar, char *hostIn, char *text, char *timeApp,  char *status, char *severity, char *facility, char *host, char *code, char *process, char *user, int *timeDef);
+static int parseTags(int nchar, char *hostIn, char *text, char *timeApp,  char *status, char *severity, char *facility, char *host, char *code, char *process, char *user, int *timeDef, char *program);
 static int hasNextTag(char *text, char *found);
 static void getThrottleTimestamp(char *appTimestamp, char* throttleTimestamp, int throttleSeconds);
 static void getThrottleString(char *msg, char *system, char *severity, char *code, char *host, char *user, char *status, char *process, char *throttleString, int throttleStringMask);
