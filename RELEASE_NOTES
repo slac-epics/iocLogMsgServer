@@ -8,6 +8,9 @@
 #  Auth: 25-June-2012, N. Fong         (NIAFONG)
 #  Rev:  dd-mmm-yyyy, Reviewer's Name    (USERNAME)
 #==============================================================
+iocLogMsgServer-R1-2-0: 09/10/2012 
+  Add optional program tag
+
 iocLogMsgServer-R1-1-2: 08/21/2012 
   Update VERSION in iocLogMsgServer.h  
 
