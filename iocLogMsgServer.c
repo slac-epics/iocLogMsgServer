@@ -1110,6 +1110,7 @@ static void parseMessages(struct iocLogClient *pclient)
 	int commitCount=1000;
 	char throttleString[THROTTLE_MSG_SIZE];
 	char logtimestamp[ASCII_TIME_SIZE];
+	char program[PROGRAM_SIZE];  // optional program tag, overrides ioc_log_programName on a per message basis
 
 	end = pclient->nChar;
 	prevpch = pclient->recvbuf;
@@ -1147,7 +1148,7 @@ static void parseMessages(struct iocLogClient *pclient)
 		rowlen = strlen(onerow);
 
 		/* get message attributes */
-		ncharStripped = parseTags(nchar, pclient->name, onerow, appTime, status, severity, system, host, code, process, user, &appTimeDef);
+		ncharStripped = parseTags(nchar, pclient->name, onerow, appTime, status, severity, system, host, code, process, user, &appTimeDef, program);
 
 		//printf("ncharStripped=%d\n", ncharStripped); 
 
@@ -1157,7 +1158,7 @@ static void parseMessages(struct iocLogClient *pclient)
 
 		getTimestamp(logtimestamp, sizeof(logtimestamp));	
 		fprintf(ioc_log_pverbosefile, "%s: text='%s'\n", logtimestamp, text);
-		fprintf(ioc_log_pverbosefile, "rowlen=%d\n", rowlen);
+		//fprintf(ioc_log_pverbosefile, "rowlen=%d\n", rowlen);
 
 		/* format throttling timestamp */
 		getThrottleTimestamp(appTime, throttleTime, ioc_log_throttleSeconds);
@@ -1178,8 +1179,8 @@ static void parseMessages(struct iocLogClient *pclient)
 		*/
 		getTimestamp(logtimestamp, sizeof(logtimestamp));	
 		fprintf(ioc_log_pverbosefile, "%s: START Oracle insert\n", logtimestamp);
-
-		rc = db_insert(0, ioc_log_programName, system, severity, text, pclient->ascii_time, appTime, throttleTime, appTimeDef,
+		
+		rc = db_insert(0, program, system, severity, text, pclient->ascii_time, appTime, throttleTime, appTimeDef,
 		               code, host, user, status, process, count, throttleString, commit); 
 
 		getTimestamp(logtimestamp, sizeof(logtimestamp));	
@@ -1187,7 +1188,7 @@ static void parseMessages(struct iocLogClient *pclient)
 		
 		if (rc == 1) {
 			/* printf("%s\n", "SUCCESSFUL INSERT INTO ERRLOG TABLE"); */
-			fprintf(ioc_log_pverbosefile, "Message from %s, %s\n", system, host);
+			//fprintf(ioc_log_pverbosefile, "Successful insert from %s, %s\n", system, host);
 			//rc = fprintf(ioc_log_plogfile, "%s: SUCCESS inserting %s\n", pclient->ascii_time, onerow);  
 			// close rawdata file if it's open
 			if (ioc_log_prawdatafile != NULL) { 
@@ -1290,7 +1291,7 @@ static int hasNextTag(char *text, char *found)
 //               Only parsing single message 
 */
 static int parseTags(int nchar, char *hostIn, char *text, char *timeApp,  char *status, char *severity, 
-                     char *facility, char *host, char *code, char *process, char *user, int *timeDef) {
+                     char *facility, char *host, char *code, char *process, char *user, int *timeDef, char *program) {
 	char *charPtr = text;  
 	char *tagPtr;         
 	char *lastPtr;
@@ -1317,6 +1318,8 @@ static int parseTags(int nchar, char *hostIn, char *text, char *timeApp,  char *
 	memset(code, '\0', sizeof(code));
 	memset(process, '\0', sizeof(process));
 	memset(user, '\0', sizeof(user));
+	//memset(program, '\0', sizeof(program));
+	strcpy(program, ioc_log_programName); // initialize program to default
 	*timeDef=0;
 
 	strcpy(facility, "IOC");
@@ -1360,6 +1363,7 @@ static int parseTags(int nchar, char *hostIn, char *text, char *timeApp,  char *
 			else if ( !strncmp(charPtr,"code=",5)) { valPtr = code; maxTagLen = NAME_SIZE; strcpy(thisTag,"code"); }
 			else if ( !strncmp(charPtr,"proc=",5)) { valPtr = process; maxTagLen = PROCESS_SIZE; strcpy(thisTag,"proc"); }
 			else if ( !strncmp(charPtr,"user=",5)) { valPtr = user; maxTagLen = USER_NAME_SIZE; strcpy(thisTag,"user"); }
+			else if ( !strncmp(charPtr,"program=",8)) { valPtr = program; maxTagLen = PROGRAM_SIZE; strcpy(thisTag,"program"); }
 			else if ((!strncmp(charPtr,"time=",5)) && (charPtr[7]  == '-') && (charPtr[11] == '-') && (charPtr[16] == ' ') 
 			                                       && (charPtr[19] == ':') && (charPtr[22] == ':')) {
 				/* time=14-Feb-2012 14:24:02.09 */
@@ -1377,7 +1381,7 @@ static int parseTags(int nchar, char *hostIn, char *text, char *timeApp,  char *
 				tagPtr++;
 				strncpy(valPtr, tagPtr, charsize);
 				valPtr[charsize-1] = 0;
-				fprintf(ioc_log_pverbosefile, "Tag: %s, Value: %s\n", thisTag, valPtr);
+				fprintf(ioc_log_pverbosefile, "Tag='%s', Value='%s'\n", thisTag, valPtr);
 				lastPtr++;
 				ncharStripped = lastPtr - text;
 				charPtr = lastPtr;
@@ -1399,6 +1403,7 @@ static int parseTags(int nchar, char *hostIn, char *text, char *timeApp,  char *
 		/* Remove IP domain name */
 		charPtr = strchr(host, '.');
 		if (charPtr) *charPtr = 0;
+		fprintf(ioc_log_pverbosefile, "Host='%s'\n", host);		
 	}
 	// prepend "SLC" to anything coming from mcc host 
 /*	if ((strncmp(host, "MCC", 3)==0) || (strncmp(host, "mcc.slac.stanford.edu", 21)==0)) {
