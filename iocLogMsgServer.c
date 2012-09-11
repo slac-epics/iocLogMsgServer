@@ -150,9 +150,8 @@ int main(int argc, char* argv[]) {
 	}
 
 	/* open log file */
-//	status = openLogFile(); 
-	status = openLogFile2(ioc_log_fileName, &ioc_log_plogfile, ioc_log_fileLimit);
-	status = openLogFile2(ioc_log_verboseFileName, &ioc_log_pverbosefile, MAX_VERBOSE_FILESIZE*ioc_log_fileLimit);
+	status = openLogFile(ioc_log_fileName, &ioc_log_plogfile, ioc_log_fileLimit);
+	status = openLogFile(ioc_log_verboseFileName, &ioc_log_pverbosefile, MAX_VERBOSE_FILESIZE*ioc_log_fileLimit);
 	getTimestamp(timestamp, sizeof(timestamp));
 	fprintf(ioc_log_plogfile, "\n\n========================================================================================================\n");
 	fprintf(ioc_log_plogfile, "%s: %s STARTED on %s\n", timestamp, VERSION, ioc_log_hostname);
@@ -274,12 +273,6 @@ printf("Sending %d messages\n", ntestrows);
 		}
 #	endif
 
-/*	status = openLogFileOld(pserver); 
-	if (status < 0) {
-		fprintf(stderr, "File access problems to `%s' because `%s'\n", ioc_log_fileName, strerror(errno));
-		return IOCLS_ERROR;
-	}
-*/
 	getTimestamp(timestamp, sizeof(timestamp));
 	fprintf(ioc_log_plogfile, "%s: ioc_log_programName=%s, throttleSecondsPv=%s, throttleFieldsPv=%s\n", timestamp, ioc_log_programName, ioc_log_throttleSecondsPv, ioc_log_throttleFieldsPv);
 
@@ -401,7 +394,7 @@ static void initGlobals()
 /* checkLogFile()
 // checks file size and copies to <logfile>.log.bak if too big
 */
-static int checkLogFile()
+static int checkLogFileOld()
 {
 	int fileSize=0;
 	char newname[256];
@@ -446,7 +439,7 @@ printf("pserver's filePos=%ld\n", pserver->filePos);
 /* checkLogFile()
 // checks file size and copies to <logfile>.log.bak if too big
 */
-static int checkLogFile2(char *filename, FILE** pfile, int maxsize)
+static int checkLogFile(char *filename, FILE** pfile, int maxsize)
 {
 	int fileSize=0;
 	char newname[256];
@@ -490,7 +483,47 @@ printf("pserver's filePos=%ld\n", pserver->filePos);
 }
 
 /* raw data file is used to write backup data in case Oracle insert fails */
-int writeToRawDataFile(char *line)
+int writeToRawDataFile(char *appTime, char *program, char *facility, char *severity, char *code, char *host, char *user, char *status, char *process, char *text, int appTimeDef)
+{
+	int rc = IOCLS_OK;
+	char date[ASCII_TIME_SIZE];
+	char *pch;
+	char directory[256];
+
+	memset(directory, '\0', 256);
+
+	// get date for raw data file name
+	getDate(date, sizeof(date));
+	fprintf(ioc_log_pverbosefile, "thedate = %s\n", date);
+
+	// open new dated raw data file if none exists
+	if (ioc_log_prawdatafile == NULL) {
+		pch=strrchr(ioc_log_fileName,'\\/');
+		strncpy(directory, ioc_log_fileName, pch - ioc_log_fileName + 1);
+		fprintf(ioc_log_pverbosefile, "directory=%s\n", directory);
+		strcpy(ioc_log_rawDataFileName, directory);
+		strcat(ioc_log_rawDataFileName, "raw_data_");
+		strcat(ioc_log_rawDataFileName, date);
+		strcat(ioc_log_rawDataFileName, ".txt");
+		fprintf(ioc_log_pverbosefile, "ioc_log_rawDataFileName = %s\n", ioc_log_rawDataFileName);
+
+		// open the file for appending
+		ioc_log_prawdatafile = fopen(ioc_log_rawDataFileName, "a+"); // open for appending, create if doesn't exist
+		if (ioc_log_prawdatafile == NULL) {
+			fprintf(ioc_log_pverbosefile, "******************\nERROR opening raw data file %s\n******************\n", ioc_log_rawDataFileName);
+			fprintf(ioc_log_plogfile, "******************\nERROR opening raw data file %s\n******************\n", ioc_log_rawDataFileName);		
+			return IOCLS_ERROR;
+		}
+	}
+
+	// dump data to file
+	fprintf(ioc_log_prawdatafile, "time=%s program=%s fac=%s sevr=%s code=%s host=%s user=%s stat=%s proc=%s %s\n", appTime, program, facility, severity, code, host, user, status, process, text);
+	return rc;
+
+}
+
+/* raw data file is used to write backup data in case Oracle insert fails */
+int writeToRawDataFileOld(char *line)
 {
 	int rc = IOCLS_OK;
 	char date[ASCII_TIME_SIZE];
@@ -531,7 +564,7 @@ int writeToRawDataFile(char *line)
  * 
  * FIXME: does pserver need to be used for logfile now that Oracle is used??
  */
-static int openLogFile()
+static int openLogFileOld()
 {
 	int rc = IOCLS_OK;
 	char timestamp[ASCII_TIME_SIZE];
@@ -562,8 +595,8 @@ printf("SET poutfile is NULL\n");
 		ioc_log_plogfile = fopen(ioc_log_fileName, "a+"); // open for appending, create if doesn't exist
 		if (ioc_log_plogfile) {
 			/* check logfile if logfile is too big and needs to be renamed */
-/*			checkLogFileOld(ioc_log_plogfile);  */
-			checkLogFile();
+/*			checkLogFile2(ioc_log_plogfile);  */
+			checkLogFileOld();
 		} else { // problem opening file
 			fprintf(stderr, "******************\nERROR opening logfile %s\n******************\n", ioc_log_fileName);
 			ioc_log_plogfile = stderr;
@@ -599,7 +632,7 @@ printf("SET poutfile is NULL\n");
  * 
  * FIXME: does pserver need to be used for logfile now that Oracle is used??
  */
-static int openLogFile2(char *filename, FILE **pfile, int maxsize)
+static int openLogFile(char *filename, FILE **pfile, int maxsize)
 {
 	int rc = IOCLS_OK;
 	char timestamp[ASCII_TIME_SIZE];
@@ -627,7 +660,7 @@ printf("SET poutfile is NULL\n");
 		/* try opening for reading and writing */
 		*pfile = fopen(filename, "a+"); // open for appending, create if doesn't exist
 		if (pfile) {
-			checkLogFile2(filename, pfile, maxsize);
+			checkLogFile(filename, pfile, maxsize);
 		} else { // problem opening file
 			printf("******************\nERROR opening logfile %s\n******************\n", filename);
 			*pfile = stderr;
@@ -795,8 +828,8 @@ printf ("====>got from readFromClientn");
 	/* now's a good time to check log file size */
 /*	checkLogFile(pclient->pserver); */
 	// <FIXME:> implement a counter so not checking every time??	
-	checkLogFile2(ioc_log_fileName, &ioc_log_plogfile, ioc_log_fileLimit);
-	checkLogFile2(ioc_log_verboseFileName, &ioc_log_pverbosefile, MAX_VERBOSE_FILESIZE*ioc_log_fileLimit);
+	checkLogFile(ioc_log_fileName, &ioc_log_plogfile, ioc_log_fileLimit);
+	checkLogFile(ioc_log_verboseFileName, &ioc_log_pverbosefile, MAX_VERBOSE_FILESIZE*ioc_log_fileLimit);
 
 	/* clear partial buffer in writeMessagesToLog, clearing entire buffer here inadvertently deletes last message */
 	/* try clearing pclient->recvbuf */
@@ -1099,7 +1132,7 @@ static void parseMessages(struct iocLogClient *pclient)
 	char status[SEVERITY_SIZE];
 	char code[MSG_CODE_SIZE];
 	char severity[SEVERITY_SIZE]; 
-	char system[FACILITY_SIZE];
+	char facility[FACILITY_SIZE];
 	char host[HOSTNODE_SIZE];
 	char process[PROCESS_SIZE];
 	char user[USER_NAME_SIZE];
@@ -1148,7 +1181,7 @@ static void parseMessages(struct iocLogClient *pclient)
 		rowlen = strlen(onerow);
 
 		/* get message attributes */
-		ncharStripped = parseTags(nchar, pclient->name, onerow, appTime, status, severity, system, host, code, process, user, &appTimeDef, program);
+		ncharStripped = parseTags(nchar, pclient->name, onerow, appTime, status, severity, facility, host, code, process, user, &appTimeDef, program);
 
 		//printf("ncharStripped=%d\n", ncharStripped); 
 
@@ -1164,7 +1197,7 @@ static void parseMessages(struct iocLogClient *pclient)
 		getThrottleTimestamp(appTime, throttleTime, ioc_log_throttleSeconds);
 
 		/* format throttling string */
-		getThrottleString(text, system, severity, code, host, user, status, process, throttleString, ioc_log_throttleFields);
+		getThrottleString(text, facility, severity, code, host, user, status, process, throttleString, ioc_log_throttleFields);
 		
 		//printf("ioc_log_program_name=%s\n", ioc_log_program_name); 
 		/* get logserver timestamp */
@@ -1180,16 +1213,17 @@ static void parseMessages(struct iocLogClient *pclient)
 		getTimestamp(logtimestamp, sizeof(logtimestamp));	
 		fprintf(ioc_log_pverbosefile, "%s: START Oracle insert\n", logtimestamp);
 		
-		rc = db_insert(0, program, system, severity, text, pclient->ascii_time, appTime, throttleTime, appTimeDef,
+		rc = db_insert(0, program, facility, severity, text, pclient->ascii_time, appTime, throttleTime, appTimeDef,
 		               code, host, user, status, process, count, throttleString, commit); 
 
 		getTimestamp(logtimestamp, sizeof(logtimestamp));	
 		fprintf(ioc_log_pverbosefile, "%s: END Oracle insert\n", logtimestamp);
-		
+	
 		if (rc == 1) {
 			/* printf("%s\n", "SUCCESSFUL INSERT INTO ERRLOG TABLE"); */
-			//fprintf(ioc_log_pverbosefile, "Successful insert from %s, %s\n", system, host);
+			//fprintf(ioc_log_pverbosefile, "Successful insert from %s, %s\n", facility, host);
 			//rc = fprintf(ioc_log_plogfile, "%s: SUCCESS inserting %s\n", pclient->ascii_time, onerow);  
+			
 			// close rawdata file if it's open
 			if (ioc_log_prawdatafile != NULL) { 
 				fprintf(ioc_log_plogfile, "%s: Closing %s\n", pclient->ascii_time, ioc_log_rawDataFileName);
@@ -1198,11 +1232,12 @@ static void parseMessages(struct iocLogClient *pclient)
 				ioc_log_prawdatafile = NULL;
 			}
 		} else {
-			fprintf(ioc_log_pverbosefile, "ERROR INSERTING %s %s %s\n", system, host, text);
+			fprintf(ioc_log_pverbosefile, "ERROR INSERTING %s %s %s\n", facility, host, text);
 			/* TODO: save entire message to data file for future processing */
 			fprintf(ioc_log_pverbosefile, "printing unsuccessful row : '%s'\n", onerow);
 			//rc = fprintf(ioc_log_plogfile, "%s: ERROR inserting %s\n", pclient->ascii_time, onerow);
-			writeToRawDataFile(onerow);		
+			//writeToRawDataFileOld(onerow);		
+			writeToRawDataFile(appTime, program, facility, severity, code, host, user, status, process, text, appTimeDef);
 		}
 
 
