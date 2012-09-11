@@ -81,7 +81,7 @@ static int ioc_log_commitCount;
 static char ioc_log_rawDataFileName[256];
 static FILE *ioc_log_prawdatafile;
 
-#define VERSION "iocLogMsgServerR1-2-0"
+#define VERSION "iocLogMsgServerR1-3-0"
 #define MAX_VERBOSE_FILESIZE 5
 //#define ioc_log_debug 1
 #define IOCLS_ERROR (-1)
@@ -141,11 +141,12 @@ static void getTimestamp (char *timestamp, int len);
 static void getDate(char *datestr, int len);
 /*static char *getTimestamp(); */
 static int getConfig(void);
-static int openLogFile();
-static int openLogFile2(char *filename, FILE **pfile, int maxsize);
-static int checkLogFile();
-static int checkLogFile2(char *filename, FILE **pfile, int maxsize);
-static int writeToRawDataFile(char *line);
+static int openLogFileOld();
+static int openLogFile(char *filename, FILE **pfile, int maxsize);
+static int checkLogFileOld();
+static int checkLogFile(char *filename, FILE **pfile, int maxsize);
+static int writeToRawDataFileOld(char *line);
+static int writeToRawDataFile(char *appTime, char *program, char *facility, char *severity, char *code, char *host, char *user, char *status, char *process, char *text, int appTimeDef);
 static void envFailureNotify(const ENV_PARAM *pparam);
 static void freeLogClient(struct iocLogClient *pclient);
 static void parseMessages(struct iocLogClient *pclient);
