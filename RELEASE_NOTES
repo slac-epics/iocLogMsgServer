@@ -8,6 +8,9 @@
 #  Auth: 25-June-2012, N. Fong         (NIAFONG)
 #  Rev:  dd-mmm-yyyy, Reviewer's Name    (USERNAME)
 #==============================================================
+iocLogMsgServer-R1-4-0: 09/25/2012 
+  Try reconnecting to db after INSERT_ERROR_RECONNECT_MINUTES minutes of insert errors elapses.
+
 iocLogMsgServer-R1-3-0: 09/11/2012 
   Save unsuccessful messages in complete 'tagged' format for easier upload later.
 
