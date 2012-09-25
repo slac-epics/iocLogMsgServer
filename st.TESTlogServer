@@ -35,7 +35,7 @@ export LD_LIBRARY_PATH=/afs/slac/package/oracle/d/linux/11.1.0/lib:$LD_LIBRARY_P
 # uncomment and modify the relevant lines below.
 # the log port is defaulted to 7004 in $EPICS_BASE/config/CONFIG_ENV
 export EPICS_IOC_LOG_PORT="7004"
-export EPICS_IOC_LOG_FILE_NAME="/nfs/slac/g/lcls/cmlog/iocLogServerTest/iocLogServer.log"
+export EPICS_IOC_LOG_FILE_NAME="/nfs/slac/g/lcls/tools/iocLogMsgServer/iocLogMsgServer.log"
 export EPICS_IOC_LOG_FILE_LIMIT="10000000"
 #export EPICS_IOC_LOG_FILE_LIMIT="10000000"
 
