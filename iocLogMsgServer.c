@@ -176,25 +176,12 @@ int main(int argc, char* argv[]) {
 		getTimestamp(timestamp, sizeof(timestamp));
 		fprintf(ioc_log_pverbosefile, "%s\n", "iocLogMsgServer: Error connecting to Oracle\n");
 		fprintf(ioc_log_plogfile, "%s: ERROR connecting to %s!\n", timestamp, ioc_log_database);
-	    return IOCLS_ERROR;
+	    	return IOCLS_ERROR;
 	}
 
 	fprintf(stderr, "connected to %s!\n", ioc_log_database);
 	getTimestamp(timestamp, sizeof(timestamp));
 	fprintf(ioc_log_plogfile, "%s: Successfully connected to %s\n", timestamp, ioc_log_database);
-
-	/* RUN TEST */
-	if (strlen(ioc_log_testDirectory) > 0) {
-		sleep(2);
-		parseMessagesTest(ioc_log_testDirectory);
-		return IOCLS_OK;
-	} else if (ntestrows > 1 ) {
-		sleep(2);
-printf("Sending %d messages\n", ntestrows);
-		sendMessagesTest(ntestrows);		
-		return IOCLS_OK;
-	}
-	/* END RUN_ORACLE_STRESS_TEST */
 
 	pserver = (struct ioc_log_server *) 
 	calloc(1, sizeof *pserver);
@@ -377,7 +364,7 @@ static void initGlobals()
 	// set default program 
 	strcpy(ioc_log_programName, "LCLS");  /* LCLS accelerator */	
 	
-	ioc_log_commitCount=0;
+	gettimeofday(&ioc_log_insertErrorStartTime, NULL);  // reset insert error timer, try reconnect if getting errors for a long time
 	ioc_log_prawdatafile = NULL;
 	ioc_log_plogfile = NULL;
 	ioc_log_pverbosefile = NULL;
@@ -390,51 +377,6 @@ static void initGlobals()
 
 }
 
-
-/* checkLogFile()
-// checks file size and copies to <logfile>.log.bak if too big
-*/
-static int checkLogFileOld()
-{
-	int fileSize=0;
-	char newname[256];
-	int rc=IOCLS_OK;
-	int rrc = 0;
-
-	if (ioc_log_plogfile) {
-		fflush(ioc_log_plogfile);
-	}
-
-	/* get file size */
-	fseek(ioc_log_plogfile, 0, SEEK_END);
-	fileSize = ftell(ioc_log_plogfile);
-
-	/* check if file is too big */
-/*	if (fileSize > pserver->max_file_size) { */
-	if (fileSize > ioc_log_fileLimit) {
-		strcpy(newname, ioc_log_fileName);
-		strcat(newname, ".bak");
-		printf("Logfile too big %d, Rename %s to %s\n", fileSize, ioc_log_fileName, newname);
-		fprintf(ioc_log_plogfile, "Logfile too big %d, Rename %s to %s\n", fileSize, ioc_log_fileName, newname);
-		fclose(ioc_log_plogfile);
-		rrc = rename(ioc_log_fileName, newname);
-		if (rrc != 0) printf("ERROR renaming %s to %s, rc=%d\n", ioc_log_fileName, newname, rrc); /* don't return error, hopefully renaming works later */
-		
-		/* reset logfile file pointer */
-		ioc_log_plogfile = fopen(ioc_log_fileName, "a+");
-		if (!ioc_log_plogfile) {
-			ioc_log_plogfile = stderr;
-			rc = IOCLS_ERROR;
-			return rc;
-		}
-	}
-	
-	/* set file pos 
-    pserver->filePos = ftell(pserver->poutfile); 
-printf("pserver's filePos=%ld\n", pserver->filePos);
-*/
-	return rc;
-}
 
 /* checkLogFile()
 // checks file size and copies to <logfile>.log.bak if too big
@@ -522,109 +464,6 @@ int writeToRawDataFile(char *appTime, char *program, char *facility, char *sever
 
 }
 
-/* raw data file is used to write backup data in case Oracle insert fails */
-int writeToRawDataFileOld(char *line)
-{
-	int rc = IOCLS_OK;
-	char date[ASCII_TIME_SIZE];
-	char *pch;
-	char directory[256];
-
-	memset(directory, '\0', 256);
-
-	getDate(date, sizeof(date));
-	fprintf(ioc_log_pverbosefile, "thedate = %s\n", date);
-
-	if (ioc_log_prawdatafile == NULL) {
-		pch=strrchr(ioc_log_fileName,'\\/');
-		strncpy(directory, ioc_log_fileName, pch - ioc_log_fileName + 1);
-		fprintf(ioc_log_pverbosefile, "directory=%s\n", directory);
-		strcpy(ioc_log_rawDataFileName, directory);
-		strcat(ioc_log_rawDataFileName, "raw_data_");
-		strcat(ioc_log_rawDataFileName, date);
-		strcat(ioc_log_rawDataFileName, ".txt");
-		fprintf(ioc_log_pverbosefile, "ioc_log_rawDataFileName = %s\n", ioc_log_rawDataFileName);
-
-		// open the file for appending
-		ioc_log_prawdatafile = fopen(ioc_log_rawDataFileName, "a+"); // open for appending, create if doesn't exist
-		if (ioc_log_prawdatafile == NULL) {
-			fprintf(ioc_log_pverbosefile, "******************\nERROR opening raw data file %s\n******************\n", ioc_log_rawDataFileName);
-			fprintf(ioc_log_plogfile, "******************\nERROR opening raw data file %s\n******************\n", ioc_log_rawDataFileName);		
-			return IOCLS_ERROR;
-		}
-	}
-
-	fprintf(ioc_log_prawdatafile, "%s\n", line);
-	return rc;
-}
-
-/*
- *	openLogFile()
- *  set ioc_log_plogfile file handler
- * 
- * FIXME: does pserver need to be used for logfile now that Oracle is used??
- */
-static int openLogFileOld()
-{
-	int rc = IOCLS_OK;
-	char timestamp[ASCII_TIME_SIZE];
-
-	if (ioc_log_fileLimit==0u) {
-		printf("ERROR: ioc_log_fileLimit=0\n");
-		return IOCLS_ERROR;
-	}
-
-/*	if (pserver->poutfile && pserver->poutfile != stderr){ 
-		fclose (pserver->poutfile);
-		pserver->poutfile = NULL;
-printf("SET poutfile is NULL\n");
-	}
-*/
-	if (ioc_log_plogfile && ioc_log_plogfile != stderr) {
-		fclose(ioc_log_plogfile);
-		ioc_log_plogfile = NULL;
-		printf("Set ioc_log_plogfile to NULL\n");
-	}
-
-    if (strlen(ioc_log_fileName) > 0) {
-		printf("********************LOG FILENAME is valid %s\n", ioc_log_fileName);
-/*		strcpy(pserver->outfile, ioc_log_fileName); 
-		pserver->max_file_size = ioc_log_fileLimit; */
-		
-		/* try opening for reading and writing */
-		ioc_log_plogfile = fopen(ioc_log_fileName, "a+"); // open for appending, create if doesn't exist
-		if (ioc_log_plogfile) {
-			/* check logfile if logfile is too big and needs to be renamed */
-/*			checkLogFile2(ioc_log_plogfile);  */
-			checkLogFileOld();
-		} else { // problem opening file
-			fprintf(stderr, "******************\nERROR opening logfile %s\n******************\n", ioc_log_fileName);
-			ioc_log_plogfile = stderr;
-			return IOCLS_ERROR;
-
-/*			ioc_log_plogfile = fopen(ioc_log_fileName, "w+");  // create file 
-			fclose (ioc_log_plogfile);
-			printf("opened and closed for write, to create new file\n");
-			ioc_log_plogfile = fopen(ioc_log_fileName, "a+");  // open for append 
-			if (!ioc_log_plogfile) {
-				fprintf(stderr, "ERROR opening logfile %s\n", ioc_log_fileName);
-				ioc_log_plogfile = stderr;
-				return IOCLS_ERROR;
-			}
-*/
-		}
-/*        return seekLatestLine (pserver); */	
-    } else {
-		printf("INVALID log file name %s\n", ioc_log_fileName);
-		return IOCLS_ERROR;
-	}
-/*    return IOCLS_OK; */
-	printf("Successfully opened logfile %s\n", ioc_log_fileName);
-	getTimestamp(timestamp, sizeof(timestamp)); 
-	fprintf(ioc_log_plogfile, "%s: %s file opened\n", timestamp, ioc_log_fileName);
-
-	return rc;
-}
 
 /*
  *	openLogFile()
@@ -673,7 +512,7 @@ printf("SET poutfile is NULL\n");
 
 	printf("Successfully opened logfile %s\n", filename);
 	getTimestamp(timestamp, sizeof(timestamp)); 
-printf("pfile=%d\n", *pfile);
+	printf("pfile=%p\n", *pfile);
 	fprintf(*pfile, "%s: %s file opened\n", timestamp, filename);
 	return rc;
 }
@@ -1015,17 +854,47 @@ static int caStartChannelAccess()
 }
 
 
+// reconnect to Oracle
+// only attempt to connect if successful disconnect, though looks like db_disconnect always returns success
+static int dbReconnect()
+{
+	char timestamp[ASCII_TIME_SIZE];
+
+	// first try to disconnect
+	getTimestamp(timestamp, sizeof(timestamp));
+	if (db_disconnect()) {
+		fprintf(ioc_log_plogfile, "%s: Disconnected from Oracle\n", timestamp);
+		fprintf(ioc_log_pverbosefile, "%s: Disconnected from Oracle\n", timestamp);
+		// try to connect
+		if (!db_connect(ioc_log_database)) {		
+			getTimestamp(timestamp, sizeof(timestamp));
+			fprintf(ioc_log_pverbosefile, "%s: Error connecting to Oracle\n", timestamp);
+			fprintf(ioc_log_plogfile, "%s: ERROR connecting to %s!\n", timestamp, ioc_log_database);
+			return IOCLS_ERROR;
+		}
+		fprintf(stderr, "connected to %s!\n", ioc_log_database);
+		getTimestamp(timestamp, sizeof(timestamp));
+		fprintf(ioc_log_plogfile, "%s: Successfully connected to %s\n", timestamp, ioc_log_database);
+	} else {  // error disconnecting, though looks like db_disconnect always returns success
+		fprintf(ioc_log_plogfile, "%s: ERROR disconnecting from Oracle\n", timestamp);
+		fprintf(ioc_log_pverbosefile, "%s: ERROR disconnecting from Oracle\n", timestamp);
+		return IOCLS_ERROR;
+	}	
+
+	return IOCLS_OK;
+}
+
 /* getThrottleString
 // Concatenates valid columns to create string for database to use as constraint
-// #define THROTTLE_PROGRAM     1 << 0    /* 1 */
-// #define THROTTLE_MSG         1 << 1    /* 2 */
-// #define THROTTLE_FACILITY    1 << 2    /* 4 */
-// #define THROTTLE_SEVERITY    1 << 3    /* 8 */
-// #define THROTTLE_CODE        1 << 4    /* 16 */
-// #define THROTTLE_HOST        1 << 5    /* 32 */
-// #define THROTTLE_USER        1 << 6    /* 64 */
-// #define THROTTLE_STATUS      1 << 7    /* 128 */
-// #define THROTTLE_PROCESS     1 << 8    /* 256 */*/
+// #define THROTTLE_PROGRAM     1 << 0    // 1 
+// #define THROTTLE_MSG         1 << 1    // 2 
+// #define THROTTLE_FACILITY    1 << 2    // 4 
+// #define THROTTLE_SEVERITY    1 << 3    // 8 
+// #define THROTTLE_CODE        1 << 4    // 16 
+// #define THROTTLE_HOST        1 << 5    // 32 
+// #define THROTTLE_USER        1 << 6    // 64 
+// #define THROTTLE_STATUS      1 << 7    // 128 
+// #define THROTTLE_PROCESS     1 << 8    // 256 */
 static void getThrottleString(char *msg, char *facility, char *severity, char *code, char *host, char *user, char *status, char *process, char *throttleString, int throttleStringMask)
 {
 /*	printf("throttle mask:\n msg=%d\n facility=%d\n severity=%d\n error=%d\n host=%d\n user=%d\n status=%d\n process=%d\n", 
@@ -1140,10 +1009,11 @@ static void parseMessages(struct iocLogClient *pclient)
 	int appTimeDef = 0;
 	int count=1;
 	int commit=1;
-	int commitCount=1000;
 	char throttleString[THROTTLE_MSG_SIZE];
 	char logtimestamp[ASCII_TIME_SIZE];
 	char program[PROGRAM_SIZE];  // optional program tag, overrides ioc_log_programName on a per message basis
+	struct timeval currentTime;
+	float elapsedMinutes=0;
 
 	end = pclient->nChar;
 	prevpch = pclient->recvbuf;
@@ -1204,12 +1074,6 @@ static void parseMessages(struct iocLogClient *pclient)
 		getTimestamp(pclient->ascii_time, sizeof(pclient->ascii_time)); 
 		//printf("client ascii_time=%s\n", pclient->ascii_time); 
 
-		/*
-		if (ioc_log_commitCount == commitCount) {
-			commit=1;
-			fprintf(ioc_log_plogfile, "commit=%d\n", commit);
-		} else commit=0;
-		*/
 		getTimestamp(logtimestamp, sizeof(logtimestamp));	
 		fprintf(ioc_log_pverbosefile, "%s: START Oracle insert\n", logtimestamp);
 		
@@ -1218,7 +1082,7 @@ static void parseMessages(struct iocLogClient *pclient)
 
 		getTimestamp(logtimestamp, sizeof(logtimestamp));	
 		fprintf(ioc_log_pverbosefile, "%s: END Oracle insert\n", logtimestamp);
-	
+
 		if (rc == 1) {
 			/* printf("%s\n", "SUCCESSFUL INSERT INTO ERRLOG TABLE"); */
 			//fprintf(ioc_log_pverbosefile, "Successful insert from %s, %s\n", facility, host);
@@ -1226,7 +1090,7 @@ static void parseMessages(struct iocLogClient *pclient)
 			
 			// close rawdata file if it's open
 			if (ioc_log_prawdatafile != NULL) { 
-				fprintf(ioc_log_plogfile, "%s: Closing %s\n", pclient->ascii_time, ioc_log_rawDataFileName);
+				fprintf(ioc_log_plogfile, "%s: Closing %s, ioc_log_insertErrorStartTime=%ld\n", pclient->ascii_time, ioc_log_rawDataFileName, ioc_log_insertErrorStartTime.tv_sec);
 				fprintf(ioc_log_pverbosefile, "%s: Closing %s\n", pclient->ascii_time, ioc_log_rawDataFileName);
 				fclose(ioc_log_prawdatafile);
 				ioc_log_prawdatafile = NULL;
@@ -1234,20 +1098,30 @@ static void parseMessages(struct iocLogClient *pclient)
 		} else {
 			fprintf(ioc_log_pverbosefile, "ERROR INSERTING %s %s %s\n", facility, host, text);
 			/* TODO: save entire message to data file for future processing */
-			fprintf(ioc_log_pverbosefile, "printing unsuccessful row : '%s'\n", onerow);
-			//rc = fprintf(ioc_log_plogfile, "%s: ERROR inserting %s\n", pclient->ascii_time, onerow);
-			//writeToRawDataFileOld(onerow);		
+			fprintf(ioc_log_pverbosefile, "unsuccessful row: '%s'\n", onerow);
+			//rc = fprintf(ioc_log_plogfile, "%s: ERROR inserting %s\n", pclient->ascii_time, onerow);		
 			writeToRawDataFile(appTime, program, facility, severity, code, host, user, status, process, text, appTimeDef);
+			// get elapsed time
+			gettimeofday(&currentTime, NULL);  
+			elapsedMinutes = (currentTime.tv_sec - ioc_log_insertErrorStartTime.tv_sec)/60;
+			// try reconnecting to db if elapsed time too long
+			// since start time is initialized when program starts or last error occurred, this will immediately try to reconnect right after first error, then wait elapsed minutes
+			if (elapsedMinutes > INSERT_ERROR_RECONNECT_MINUTES) {
+				getTimestamp(logtimestamp, sizeof(logtimestamp));	
+				fprintf(ioc_log_plogfile, "%s: Try reconnecting to %s, elapsedMinutes=%g\n", pclient->ascii_time, ioc_log_database, elapsedMinutes);
+				fprintf(ioc_log_pverbosefile, "%s: Try reconnecting to %s, elapsedMinutes=%g\n", pclient->ascii_time, ioc_log_database, elapsedMinutes);
+				dbReconnect();
+				// reset error start time
+				gettimeofday(&ioc_log_insertErrorStartTime, NULL);  
+				getTimestamp(logtimestamp, sizeof(logtimestamp));
+				fprintf(ioc_log_plogfile, "%s: Reset ioc_log_insertErrorStartTime=%ld\n", pclient->ascii_time, ioc_log_insertErrorStartTime.tv_sec);
+				fprintf(ioc_log_pverbosefile, "%s: Reset ioc_log_insertErrorStartTime=%ld\n", pclient->ascii_time, ioc_log_insertErrorStartTime.tv_sec);
+			}
 		}
 
 
 		pch = strtok(NULL, "\n");
 		memset(onerow, '\0', THROTTLE_MSG_SIZE);
-		
-		/*if (ioc_log_commitCount > commitCount) {
-			ioc_log_commitCount=0;
-		}
-		ioc_log_commitCount++; */
 	}
 
 	fprintf(ioc_log_pverbosefile, "  DONE PARSING RECVBUF \n\n");
@@ -1339,7 +1213,6 @@ static int parseTags(int nchar, char *hostIn, char *text, char *timeApp,  char *
 	int maxTagLen;
 	char thisTag[1000];
 	char timestamp[ASCII_TIME_SIZE];
-	char buff[10];
 /*  Initialize outputs.
 **  default is IOC
 **  host defaults to the host in pclient
