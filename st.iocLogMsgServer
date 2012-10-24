@@ -46,6 +46,13 @@ export EPICS_IOC_LOG_FILE_LIMIT="10000000"
 printenv | grep EPICS
 
 export TWO_TASK=MCCOMSG
+# ***********************************************
+# FOR ORACLE WALLET:
+export ORACLE_HOME=$PACKAGE_TOP/oracle/product/11.1.0.6/client
+export PATH=$ORACLE_HOME/bin:${PATH}
+export TNS_ADMIN=$TOOLS/oracle/wallets/message_logger
+# ***********************************************
+
 
 echo "Starting the Test Facilities Log MSG Server "
 
