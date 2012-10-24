@@ -8,6 +8,8 @@
 # in file LICENSE that is included with this distribution. 
 #*************************************************************************
 TOP=../../..
+# TOP FOR TESTING!!!
+# TOP=../..
 include $(TOP)/configure/CONFIG
 
 #

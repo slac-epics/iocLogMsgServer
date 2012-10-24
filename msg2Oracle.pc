@@ -108,10 +108,15 @@ char server[31];
 	strncpy(passwd, buff, strlen(buff)-1);
 	strcpy(login, user);
 	sprintf(login, "%s/%s@", user, passwd);
-*/
+
 	strcpy(login, user);
 	strcat(login, "/asorry17cents:@");
 	strcat(login, server);
+*/
+/* FOR ORACLE WALLET SETUP */
+        strcpy(login, "/@");
+        strcat(login, server);
+printf("db connect via ORACLE WALLET:\n");
 printf("login=%s\n", login);
 
     	EXEC SQL BEGIN DECLARE SECTION;
