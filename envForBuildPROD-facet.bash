@@ -1,0 +1,16 @@
+# lcls-prod02 dev environment
+# current oracle env seems to have what it takes!
+#source /afs/slac/g/lcls/tools/oracle/oracleSetup.bash
+#export ORACLE_HOME=/afs/slac/package/oracle/d/linux/11.1.0
+
+# FACET environment
+source $TOOLS/oracle/oracleSetup-facet.bash
+
+# LCLS environment
+#source $TOOLS/oracle/oracleSetup.bash
+
+# now add on stuff for ProC
+export ORACLE_HOME=/usr/local/lcls/package/oracle/product/11.1.0.6/client
+export PATH=$ORACLE_HOME/bin:${PATH}
+export LD_LIBRARY_PATH=$ORACLE_HOME/precomp/lib:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=$ORACLE_HOME/lib:$LD_LIBRARY_PATH
