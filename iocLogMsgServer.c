@@ -23,6 +23,21 @@
  *
  * 	    Revision: 	Stephanie Allison 
  *      Date:       11/02/07
+ *
+ *      03-Mar-2015 Bob Hall
+ *          Modified to set the program tag of messages with a
+ *          facility tag that starts with "DpSlc" (from the VMS
+ *          SLC Aida data provider processes) to FACET as a
+ *          special case.  All AIDAPROD (including VMS SLC Aida
+ *          data provider) processes send their messages to
+ *          the LCLS iocLogMsgServer process on lcls-daemon2,
+ *          where by default all messages have their program
+ *          tag set to LCLS.  The complaint was that the VMS
+ *          SLC Aida data provider processes were having their
+ *          program tag set to LCLS although requests for
+ *          services from these processes are known to only
+ *          come from FACET clients.
+
  */
 
 /*
@@ -1053,7 +1068,14 @@ static void parseMessages(struct iocLogClient *pclient)
 		/* get message attributes */
 		ncharStripped = parseTags(nchar, pclient->name, onerow, appTime, status, severity, facility, host, code, process, user, &appTimeDef, program);
 
-		//printf("ncharStripped=%d\n", ncharStripped); 
+		//printf("ncharStripped=%d\n", ncharStripped);
+
+        /* set the program tag for messages having a facility tag
+           starting with "DpSlc" (VMS SLC Aida data provider messages)
+           to FACET. */
+        if (strncmp(facility, "DpSlc", 5) == 0) {
+            strcpy(program, "FACET");
+        }
 
 		/* get message text */
 		strncpy(text, &onerow[ncharStripped], rowlen-ncharStripped);
