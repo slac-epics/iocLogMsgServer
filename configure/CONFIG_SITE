@@ -1,0 +1,16 @@
+# CONFIG_SITE
+#
+# Make any extensions-specific changes to the EPICS build
+# configuration variables in this file.
+#
+# Host/target specific settings are in os subdirectory files named
+#  os/CONFIG_SITE.$(EPICS_HOST_ARCH).Common
+#  os/CONFIG_SITE.Common.$(T_A)
+#  os/CONFIG_SITE.$(EPICS_HOST_ARCH).$(T_A)
+CROSS_COMPILER_TARGET_ARCHS=
+
+SHARED_LIBRARIES = YES
+STATIC_BUILD = NO
+
+ORACLE_HOME=$(PACKAGE_SITE_TOP)/oracle/product/11.2.0.4/linux-x86_64
+
