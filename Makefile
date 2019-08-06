@@ -45,9 +45,11 @@ iocLogMsgServer_SYS_LIBS += nnz11
 include $(TOP)/configure/RULES
 include $(TOP)/configure/RULES_TOP
 
+GCC_VERSION=`gcc -dumpversion`
+
 msg2Oracle.c:
 	cp ../msg2Oracle.pc .
-	LD_LIBRARY_PATH=$(ORACLE_HOME)/precomp/lib:$(ORACLE_HOME)/lib:$(LD_LIBRARY_PATH) $(ORACLE_HOME)/bin/proc sys_include=/usr/lib/gcc/x86_64-redhat-linux/4.4.7/include/ common_parser=yes msg2Oracle.pc
+	LD_LIBRARY_PATH=$(ORACLE_HOME)/precomp/lib:$(ORACLE_HOME)/lib:$(LD_LIBRARY_PATH) $(ORACLE_HOME)/bin/proc sys_include=/usr/lib/gcc/x86_64-redhat-linux/$(GCC_VERSION)/include/ common_parser=yes msg2Oracle.pc
 	mv msg2Oracle.c ../.
 
 echo:
