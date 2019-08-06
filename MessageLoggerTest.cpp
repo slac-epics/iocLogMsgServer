@@ -6,6 +6,7 @@
 #include "MessageLoggerTest.h"
 #include <stdio.h>
 
+#include <unistd.h>
 #include <epicsExport.h>
 #include <iocsh.h>
 #include <errlog.h>
