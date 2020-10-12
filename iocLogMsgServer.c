@@ -1307,6 +1307,9 @@ static int parseTags(int nchar, char *hostIn, char *text, char *timeApp,  char *
 			/* get value of the tag */
 			if (valPtr) {
 				charsize = lastPtr - tagPtr;
+                                if (charsize < 1) {
+                                    return 0;
+                                }
 				if (charsize > maxTagLen) charsize = maxTagLen;
 				tagPtr++;
 				strncpy(valPtr, tagPtr, charsize);
