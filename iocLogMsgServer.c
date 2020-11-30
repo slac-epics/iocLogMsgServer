@@ -950,7 +950,7 @@ static void getThrottleTimestamp(char *appTimestamp, char* throttleTimestamp, in
 
 	fprintf(ioc_log_pverbosefile,"getThrottleTimestamp appTimestamp=%s\n", appTimestamp);
 
-        if (appTimestamp == NULL || appTimestamp == "") {
+        if (appTimestamp == NULL || strcmp(appTimestamp, "") == 0) {
             fprintf(ioc_log_pverbosefile, "Skipping getThrottleTimestamp -> appTimestamp is empty or NULL");
             return;
         }
