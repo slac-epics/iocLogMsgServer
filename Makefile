@@ -20,15 +20,19 @@ PROD_SYS_LIBS_WIN32 = ws2_32 advapi32 user32
 #PROD_LIBS = Com ca
 PROD_LIBS   += $(EPICS_BASE_HOST_LIBS)
 
+ifneq ($(NO_ORACLE),YES)
 USR_LDFLAGS_DEFAULT += -L$(ORACLE_HOME)/lib
 USR_LDFLAGS_DEFAULT += -L$(ORACLE_HOME)/precomp/lib
-USR_CFLAGS = -O0
-USR_CFLAGS += -I$(ORACLE_HOME)/precomp/public
+USR_CFLAGS += -I$(ORACLE_HOME)/precomp/public -DORACLE=1
 USR_CFLAGS += -L$(ORACLE_HOME)/precomp/lib
 USR_CFLAGS += -L$(ORACLE_HOME)/lib
+endif
+USR_CFLAGS = -O0
 
 iocLogMsgServer_SRCS = iocLogMsgServer.c
+ifneq ($(NO_ORACLE),YES)
 iocLogMsgServer_SRCS += msg2Oracle.c
+endif
 iocLogMsgServer_SRCS += MessageLoggerTest.cpp
 
 #iocLogMsgServer_SRCS += msgSender.c
@@ -37,8 +41,10 @@ msgReceiver_SRCS += msgReceiver.c
 
 iocLogMsgServer_SYS_LIBS_solaris = socket
 # if I put these in, the g++ fails
+ifneq ($(NO_ORACLE),YES)
 iocLogMsgServer_SYS_LIBS += clntsh
 iocLogMsgServer_SYS_LIBS += nnz11
+endif
 # this one works too
 #iocLogMsgServer_SYS_LIBS += sqlplus
 
@@ -54,3 +60,4 @@ msg2Oracle.c:
 
 echo:
 	echo $(ORACLE_HOME)
+

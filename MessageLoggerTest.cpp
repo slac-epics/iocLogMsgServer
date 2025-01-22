@@ -170,11 +170,13 @@ void parseLine(string line)
 		strncpy(ctext, text.c_str(), 680);
 	else 
 		strcpy(ctext, text.c_str());
-	
+
+#ifdef USE_ORACLE
 /*		rc = db_insert(0, ioc_log_program_name, system, severity, text, pclient->ascii_time, appTime, throttleTime, appTimeDef,
 		               code, host, user, status, process, count, throttleString, commit); 
 */
 	int rc = db_insert(0, "TEST", cfac, csev, ctext, ctime, ctime, ctime, 0, ccode, chost, cuser, cstatus, cprocess, 1.0, ctext, 1);
+#endif
 printf("ctext='%s'\n", ctext);
 
 	globalCounter++;
@@ -322,10 +324,12 @@ void sendMessagesTest(int nrows) {
 //	14-Feb-2012 10:10:38.00
 	strcpy(timestamp, "14-Feb-2012 10:10:38.00");
 
+#ifdef USE_ORACLE
 	for (int i=0; i<nrows; i++) {
 //		db_insert(0, "TEST", "cfac", "csev", "ctext", timestamp, timestamp, timestamp, 1, "ccode", "chost", "cuser", "cstatus", "cprocess", 1.0, "ctext", 1);
 		db_insert(0, "TEST", "cfac", "csev", "", "", "", "", 0, "", "", "", "", "", 1.0, "", 1);
-	}			
+	}		
+#endif
 	globalCounter=nrows;
 
 	time(&rawtime);
