@@ -184,7 +184,7 @@ int main(int argc, char* argv[]) {
 	fprintf(ioc_log_pverbosefile, "PV Monitoring:\nioc_log_programName=%s\nioc_log_throttleSeconds=%d\nioc_log_throttleFields=%d\n", ioc_log_programName, ioc_log_throttleSeconds, ioc_log_throttleFields);
 	fprintf(ioc_log_plogfile, "%s: PV Monitoring:	 ioc_log_programName=%s, ioc_log_throttleSeconds=%d, ioc_log_throttleFields=%d\n", timestamp, ioc_log_programName, ioc_log_throttleSeconds, ioc_log_throttleFields);
 
-
+#ifdef USE_ORACLE
 	// connect to Oracle
 //	if (!db_connect("MCCODEV")) {
 	if (!db_connect(ioc_log_database)) {		
@@ -193,6 +193,7 @@ int main(int argc, char* argv[]) {
 		fprintf(ioc_log_plogfile, "%s: ERROR connecting to %s!\n", timestamp, ioc_log_database);
 	    	return IOCLS_ERROR;
 	}
+#endif
 
 	fprintf(stderr, "connected to %s!\n", ioc_log_database);
 	getTimestamp(timestamp, sizeof(timestamp));
@@ -317,10 +318,12 @@ int main(int argc, char* argv[]) {
 */
 	}
 
+#ifdef USE_ORACLE
       /* disconnect from  Oracle */
 	if (db_disconnect()) {
 		fprintf(stderr, "%s\n", "iocLogMsgServer: Disconnected from Oracle\n");
 	}
+#endif
 
 	/* clean up channel access */
   	 ca_context_destroy();
@@ -868,7 +871,7 @@ static int caStartChannelAccess()
 	return rc;
 }
 
-
+#ifdef USE_ORACLE
 // reconnect to Oracle
 // only attempt to connect if successful disconnect, though looks like db_disconnect always returns success
 static int dbReconnect()
@@ -898,6 +901,7 @@ static int dbReconnect()
 
 	return IOCLS_OK;
 }
+#endif
 
 /* getThrottleString
 // Concatenates valid columns to create string for database to use as constraint
@@ -1104,6 +1108,7 @@ static void parseMessages(struct iocLogClient *pclient)
 		getTimestamp(logtimestamp, sizeof(logtimestamp));	
 		fprintf(ioc_log_pverbosefile, "%s: START Oracle insert\n", logtimestamp);
 		
+#ifdef USE_ORACLE
 		rc = db_insert(0, program, facility, severity, text, pclient->ascii_time, appTime, throttleTime, appTimeDef,
 		               code, host, user, status, process, count, throttleString, commit); 
 
@@ -1145,7 +1150,7 @@ static void parseMessages(struct iocLogClient *pclient)
 				fprintf(ioc_log_pverbosefile, "%s: Reset ioc_log_insertErrorStartTime=%ld\n", pclient->ascii_time, ioc_log_insertErrorStartTime.tv_sec);
 			}
 		}
-
+#endif
 
 		pch = strtok(NULL, "\n");
 		memset(onerow, '\0', THROTTLE_MSG_SIZE);
